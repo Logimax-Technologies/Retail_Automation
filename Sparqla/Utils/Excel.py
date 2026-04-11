@@ -32,32 +32,47 @@ class ExcelUtils:
     #         print(f"Created Excel copy at: {ExcelUtils.file_path}")
     #     else:
     #         print(f"Using existing Excel copy: {ExcelUtils.file_path}")
-    # file_path =  "C:\\Users\Dell\\Desktop\\sqrqlas\\Sqarqla_Retail_data2.xlsx"
-    file_path =   "C:\\Users\\Dell\\Desktop\\DATA\\Sqarqla_Retail_data2.xlsx"
-    SCREENSHOT_PATH = "C:\\Retail_Automation\\Sparqla\\Reports\\screenshots"
+    file_path = r"C:\Users\admin\Desktop\sqrqlas\Sqarqla_Retail_data2.xlsx"
+    # file_path = r"C:\Users\Dell\Desktop\sqrqlas\sqrqlas\Sqarqla_Retail_data20.xlsx"
+    SCREENSHOT_PATH = r"C:\Retail_Automation\Sparqla\Reports\screenshots"
     
-    # Start Excel
+    BASE_URL = "https://qa.retail.logimaxindia.com/admin/" 
+    # BASE_URL = "https://erp.sparqlediamonds.com/qa/admin/"
+
+    # BASE_URL = "http://localhost/retailsource/admin/" 
+    
+    
+    @staticmethod
     def ExcelClose(file_path):
-        excel_app = win32com.client.Dispatch("Excel.Application")
-        excel_app.Visible = False
+        import win32com.client
+        import os
+        try:
+            # Connect to existing running Excel instance
+            excel_app = win32com.client.GetActiveObject("Excel.Application")
+        except Exception:
+            print("Workbook is not currently open.")
+            return
 
-        # Initialize workbook variable
         workbook = None
+        target_path = os.path.abspath(file_path).lower()
 
-        # Check if workbook is already open
-        for wb in excel_app.Workbooks:
-            if os.path.abspath(wb.FullName) == os.path.abspath(file_path):
-                workbook = wb
-                break
+        try:
+            for wb in excel_app.Workbooks:
+                if os.path.abspath(wb.FullName).lower() == target_path:
+                    workbook = wb
+                    break
+        except Exception:
+            pass
 
         if workbook:
-            workbook.Save()   # Save changes
-            workbook.Close()  # Close workbook
-            print("Workbook saved and closed.")
+            try:
+                workbook.Save()
+                workbook.Close()
+                print("Workbook saved and closed.")
+            except Exception as e:
+                print(f"Error closing workbook: {e}")
         else:
             print("Workbook is not currently open.")
-
-        excel_app.Quit()
 
     # open Excel file
     def read_excel(file_path):

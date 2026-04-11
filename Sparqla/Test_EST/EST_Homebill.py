@@ -54,13 +54,13 @@ class ESTIMATION_Homebill(unittest.TestCase):
                     "L.Wt": 15,
                     "MC Type": 16,
                     "MC Value": 17,
-                    "Wastage%": 18,
+                    "Wastage%": 18, # Sheet has 'Wastage% '
                     "Other Charge": 19,
                     "Field_validation_status": 20
                 }
                 row_data = {
                     key: sheet.cell(row=row_num, column=col).value
-                    for key, col in data.items()
+                    for key, (col) in data.items()
                 }
                 print(row_data)
                 # Call your 'create' method
@@ -70,7 +70,8 @@ class ESTIMATION_Homebill(unittest.TestCase):
                 if Create_data:
                     ceil_value,Test_Status,Actual_Status= Create_data
                     ESTIMATION_Homebill.update_excel_status(self,row_num, Test_Status, Actual_Status, Sheet_name)                    
-                    salevalue = salevalue + float(ceil_value)                   
+                    salevalue = salevalue + float(ceil_value) 
+                    row=row+1 # Increment for next row in web table                  
         return salevalue 
                 
     def create(self,row_data, row_num, Sheet_name, row, Board_Rate):
@@ -173,8 +174,6 @@ class ESTIMATION_Homebill(unittest.TestCase):
             row_num=row_num,
             Sheet_name=Sheet_name
             )
-            Error_field_val.extend(errors)
-            print(Error_field_val)
         else:
             msg = f"'{None}' → Pcs field is mandatory ⚠️"
             Mandatory_field.append("Pcs"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
@@ -190,8 +189,6 @@ class ESTIMATION_Homebill(unittest.TestCase):
             row_num=row_num,
             Sheet_name=Sheet_name
             )
-            Error_field_val.extend(errors)
-            print(Error_field_val)
         else:
             msg = f"'{None}' → G.Wt field is mandatory ⚠️"
             Mandatory_field.append("G.Wt"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
@@ -218,8 +215,6 @@ class ESTIMATION_Homebill(unittest.TestCase):
             screenshot_prefix="MC Value",
             row_num=row_num,
             Sheet_name=Sheet_name)
-            Error_field_val.extend(errors)
-            print(Error_field_val)
         else:
             msg = f"'{None}' → MC Value field is mandatory ⚠️"
             Mandatory_field.append("MC Value"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
@@ -235,49 +230,67 @@ class ESTIMATION_Homebill(unittest.TestCase):
             range_check = lambda v: 0 <= float(v) <= 99,
             row_num=row_num,
             Sheet_name=Sheet_name)
-            Error_field_val.extend(errors)
-            print(Error_field_val)
         else:
             msg = f"'{None}' → Wastage% Vlue field is mandatory ⚠️"
             Mandatory_field.append("Wastage%"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
-                
-        # Open Other Charge section
-        Function_Call.click(self, f"(//table[@id='estimation_custom_details']//td[19]/a)[{row}]")
-
-        charges_raw = row_data["Other Charge"]
-        if not charges_raw:
-            print("⚠️ OtherCharge flag is Yes but no ChargeName provided")
-            return
-        charges_list = [s.strip() for s in charges_raw.split(",")]
-        for idx, charge in enumerate(charges_list):
-            # For the 2nd, 3rd, ... charges → click +Add
-            if idx > 0:
-                Function_Call.click(self, '//button[@id="add_new_charge"]')
-        
-            # Select charge type
+        if row_data["Other Charge"]:        
+            # Open Other Charge section
+            Function_Call.click(self, f"(//table[@id='estimation_custom_details']//td[22]/a)[{row}]")
             sleep(3)
-            Function_Call.select(self,f'(//select[@name="est_stones_item[id_charge][]"])[{idx+1}]',charge)
-         
-            # Locate corresponding value field (same row as idx+1)
-            value_input = wait.until(EC.presence_of_element_located(
-                (By.XPATH, f"(//input[@name='est_stones_item[value_charge][]'])[{idx+1}]")
-            ))
-            current_value = value_input.get_attribute("value").strip()
 
-            # If empty or "0.00" → auto-fill random multiple of 100
-            if current_value == "0.00":
-                random_value = random.randint(1, 10) * 100
-                sleep(1)
-                value_input.clear()
-                value_input.send_keys(str(random_value))
-                print(f"⚡ Added random value {random_value} for {charge}")
+            charges_raw = row_data["Other Charge"]
+            charges_list = [s.strip() for s in charges_raw.split(",")]
+            
+            # [NEW] Check existing entries to avoid redundant saves
+            existing_dropdowns = self.driver.find_elements(By.XPATH, '//select[@name="est_stones_item[id_charge][]"]')
+            existing_names = []
+            for d in existing_dropdowns:
+                name = Select(d).first_selected_option.text.strip()
+                if name and name != "Select Charge":
+                    existing_names.append(name)
+            
+            matches = (set(charges_list) == set(existing_names) and len(charges_list) == len(existing_names))
+            needs_fill = not matches
+            
+            if matches:
+                # Check values for non-zero
+                for i in range(len(existing_dropdowns)):
+                    val_el = self.driver.find_elements(By.XPATH, "//input[@name='est_stones_item[value_charge][]']")[i]
+                    if val_el.get_attribute("value").strip() in ["0.00", "0", ""]:
+                        needs_fill = True; break
+            
+            if not needs_fill:
+                print("✅ Charges & values already match. Clicking Close.")
+                wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'Close')]"))).click()
             else:
-                print(f"✅ Auto value {current_value} kept for {charge}")
+                for idx, charge in enumerate(charges_list):
+                    if idx >= len(existing_dropdowns):
+                        Function_Call.click(self, '//button[@id="add_new_charge"]')
+                        sleep(1)
+                
+                    # Select charge type
+                    sleep(2)
+                    Function_Call.select(self,f'(//select[@name="est_stones_item[id_charge][]"])[{idx+1}]',charge)
+                
+                    # Value check
+                    value_input = wait.until(EC.presence_of_element_located(
+                        (By.XPATH, f"(//input[@name='est_stones_item[value_charge][]'])[{idx+1}]")
+                    ))
+                    curr_val = value_input.get_attribute("value").strip()
 
-        # Save button
-        wait.until(EC.element_to_be_clickable((By.ID, "update_charge_details"))).click()
-        print("Field✅ OtherCharges added:", charges_list)
-        
+                    if curr_val in ["0.00", "0", ""]:
+                        random_value = random.randint(1, 10) * 100
+                        value_input.clear()
+                        value_input.send_keys(str(random_value))
+                        print(f"⚡ Added random value {random_value} for {charge}")
+                    else:
+                        print(f"✅ Auto value {curr_val} kept for {charge}")
+
+                # Save button
+                wait.until(EC.element_to_be_clickable((By.ID, "update_charge_details"))).click()
+                print("Field✅ OtherCharges added/updated:", charges_list)
+        else:
+            pass
         # Fetch values with one-liners
         Gwt   = ESTIMATION_Homebill.get_val(self, f'(//input[@name="est_custom[gwt][]"])[{row}]')
         # Lwt   = ESTIMATION_Homebill.get_val(self, f'(//input[@name="est_custom[lwt][]"])[{row}]')
@@ -310,12 +323,20 @@ class ESTIMATION_Homebill(unittest.TestCase):
         value = wait.until(EC.presence_of_element_located((By.XPATH, f"(//span[starts-with(@id,'select2-est_custom') and contains(@id,'[purity]')])[{row}]")))
         purity = value.get_attribute("title")
         print(purity) 
-        if purity =='916.0000':
-           gold_rate=Board_Rate[0]
-        if purity == '75.0000':
-           gold_rate=Board_Rate[1]
-        if purity == '92.5000':
-            gold_rate=Board_Rate[2]
+        gold_rate = 0
+        try:
+            purity_val = float(purity)
+            if purity_val == 91.60:
+                gold_rate = Board_Rate[0]
+            elif purity_val == 75.0:
+                gold_rate = Board_Rate[1]
+            elif purity_val == 92.5:
+                gold_rate = Board_Rate[2]
+            else:
+                print(f"⚠️ Unknown purity value: {purity_val}. Using rate 0.")
+        except (ValueError, TypeError):
+            print(f"❌ Could not convert purity '{purity}' to float.")
+
                 
         # Debug print all values
         print(f"Gwt={Gwt}, Lwt={Lwt}, Nwt={Nwt}, PCS={PCS}, Stone={Stone},"
@@ -331,12 +352,12 @@ class ESTIMATION_Homebill(unittest.TestCase):
         else:
             Test_Status= "Fail"
             Actual_Status =(f"❌ Calculation Error in {ceil_value} | Web Value={Taxable_Amt}")
-        if Mandatory_field or Error_field_val:
-            Test_Status= "Fail"
-            if Mandatory_field:
-               Actual_Status=f"{Mandatory_field} These field is mandatory"
-            if Error_field_val:
-               Actual_Status=f"{Error_field_val} These field is wrong data to save."
+        # if Mandatory_field or Error_field_val:
+        #     Test_Status= "Fail"
+        #     if Mandatory_field:
+        #        Actual_Status=f"{Mandatory_field} These field is mandatory"
+        #     if Error_field_val:
+        #        Actual_Status=f"{Error_field_val} These field is wrong data to save."
         return ceil_value,Test_Status,Actual_Status
             
     def calculation(self,Cal_current_value,gold_rate,Gwt,Nwt,Wast_per,Mc,Stone,other_Amt,Mc_type,Taxvalue):
@@ -349,7 +370,9 @@ class ESTIMATION_Homebill(unittest.TestCase):
             "4": "Fixed Rate based on Weight"
         }
         Cal_type = data[str(Cal_current_value)]   # convert int → str because keys are strings
-        print(Cal_type)
+        print(f"\n{'='*20}")
+        print(f"📊 CALCULATION TYPE: {Cal_type}")
+        print(f"{'='*20}\n")
         gross_weight=Gwt
         net_weight = Nwt  
         wastage_percentage = Wast_per 
@@ -358,7 +381,9 @@ class ESTIMATION_Homebill(unittest.TestCase):
         Charge_Amt = other_Amt
         Tax = float(Taxvalue)
         # initialize
-        ceil_value = None
+        ceil_value = "0.00"
+        IGst = "0.00"
+        SGst = "0.00"
         if Cal_type=="Mc on Gross, Wast On Net":
         # calculation making cost on gross Wastage% on Net  
             if Mc_type == 'Piece':

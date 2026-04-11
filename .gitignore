@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.pyre/
+.pytype/
+.mypy_cache/
+node_modules/
+output/
+Sparqla/Reports/screenshots/

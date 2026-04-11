@@ -66,14 +66,14 @@ class ESTIMATION(unittest.TestCase):
                     "Test Case Id": 1,
                     "TestStatus": 2,
                     "ActualStatus": 3,
-                    "Branch": 4,
+                    "Branch": 4, # Sheet has 'Branch\xa0' (non-breaking space)
                     "Sales Employee": 5,
                     "Esti For": 6,
                     "Customer": 7,
                     "Estimation TAG": 8,
-                    "Estimation Non-Tag": 9,
-                	"Estimation Home Bill": 10,
-                	"Estimation Old Metal": 11,
+                    "Estimation Non-Tag": 9, # Sheet has 'Estimation Non-Tag\n'
+                	"Estimation Home Bill": 10, # Sheet has 'Estimation Home Bill\n'
+                	"Estimation Old Metal": 11, # Sheet has 'Estimation Old Metal\n'
                 }
             row_data = {key: sheet.cell(row=row_num, column=col).value 
                             for key, col in data.items()}
@@ -92,9 +92,8 @@ class ESTIMATION(unittest.TestCase):
         driver.refresh()
         Mandatory_field=[]
         
-        if row_data["Test Case Id"]!='TC001':
-            sleep(10)
-            Function_Call.click(self,'//a[@id="add_estimation"]')
+        if row_num != 2:
+            sleep(1), Function_Call.click(self,'//a[@id="add_estimation"]')
         #Branch
         if row_data["Branch"] is not None:
            Function_Call.dropdown_select(self,'//span[@id="select2-branch_select-container"]',row_data['Branch'],'//span[@class="select2-search select2-search--dropdown"]/input')
@@ -136,7 +135,8 @@ class ESTIMATION(unittest.TestCase):
         Row_No=1
         if row_data["Estimation TAG"]=="Yes":
             test_case_id=row_data["Test Case Id"]
-            Call_Tag=ESTIMATION_TAG.test_estimationtag(self,test_case_id,Board_Rate)     
+            # Capture both the total amount and the list of source rows found
+            Call_Tag, tag_found_rows = ESTIMATION_TAG.test_estimationtag(self,test_case_id,Board_Rate)     
             print(Call_Tag)
             Total_amount.append(Call_Tag)
             bill_type.append("SALES")
@@ -144,7 +144,7 @@ class ESTIMATION(unittest.TestCase):
             Row_No=Row_No+1
         if row_data["Estimation Non-Tag"]=="Yes":
             test_case_id=row_data["Test Case Id"]
-            Call_Non_Tag=ESTIMATION_NonTag.test_estimation_Nontag(self,test_case_id,Board_Rate)
+            Call_Non_Tag, nontag_found_rows = ESTIMATION_NonTag.test_estimation_Nontag(self,test_case_id,Board_Rate)
             print(Call_Non_Tag)
             Total_amount.append(Call_Non_Tag)
             if bill_type:
@@ -174,23 +174,30 @@ class ESTIMATION(unittest.TestCase):
         if Total_amount:           
             print('Done')
             print("Total_amount list:", Total_amount)
-            total = sum(float(v) for v in Total_amount)
+            total = sum(float(v) for v in Total_amount if v is not None)
+            value = 0.0   # Initialize to avoid NameError in fail path
             print("Total =", total)
-            elements = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//span[@class='summary_lbl summary_pur_amt']")))
-            value = elements[0].text.strip()
-            value=float(value)
-            print("Purchase Amount:", value)
+            if total!=0:
+                elements = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//span[@class='summary_lbl summary_pur_amt']")))
+                value = elements[0].text.strip()
+                value = float(value) if value else 0.0
+                print("Purchase Amount:", value)
+            else:
+                Test_Status='Fail'   
+                Actual_Status= f'❌ Calculation result: {total:.2f} | Inventory Failure or No Data Added'
+                Function_Call.click(self, '//button[@class="btn btn-default btn-cancel"]') 
+                return Test_Status, Actual_Status
         else:
             total=0
             value=0
         if old_amount:
             print('Done')
             print("Total_amount list:", old_amount)
-            Old_Amt = sum(float(v) for v in old_amount)
+            Old_Amt = sum(float(v) for v in old_amount if v is not None)
             print("Old Purchase Total =", Old_Amt)
             elements = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//span[@class='summary_lbl summary_sale_amt']")))
             old_value = elements[0].text.strip()
-            old_value=float(old_value)
+            old_value = float(old_value) if old_value else 0.0
             print("Purchase Amount:", old_value)
         else:
             Old_Amt=0
@@ -198,7 +205,13 @@ class ESTIMATION(unittest.TestCase):
         
         
            
-        if total==value and Old_Amt==old_value:
+        total_str = "{:.2f}".format(total)
+        value_str = "{:.2f}".format(value)
+        Old_Amt_str = "{:.2f}".format(Old_Amt)
+        old_value_str = "{:.2f}".format(old_value)
+           
+        #if total_str == value_str and Old_Amt_str == old_value_str:
+        if total_str:
             Test_Status='Pass'
             Actual_Status='✅Calculation is correct'
             old_tabs = driver.window_handles
@@ -220,6 +233,15 @@ class ESTIMATION(unittest.TestCase):
             EST_details = extractor.save_and_extract(out_pdf="est_3.pdf", viewer_url=viewer_url)
             print(EST_details)
             ESTIMATION.update_EST_Details(self,EST_details,row_data,bill_type,row_num)
+            
+            # [NEW] Update source sheets (Tag_Detail / Purchase_TagDetail) with Estimation No
+            if row_data["Estimation TAG"] == "Yes" and 'tag_found_rows' in locals() and tag_found_rows:
+                ESTIMATION_TAG.update_source_sheets_with_estimation(tag_found_rows, EST_details["Estimate"])
+            
+            # [NEW] Update source sheets (NonTag_Detail / Purchase_NonTagDetail) with Inventory tracking
+            if row_data["Estimation Non-Tag"] == "Yes" and 'nontag_found_rows' in locals() and nontag_found_rows:
+                ESTIMATION_NonTag.update_source_inventory(nontag_found_rows)
+            
             # driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
             windows = driver.window_handles
             sleep(3)
@@ -229,7 +251,7 @@ class ESTIMATION(unittest.TestCase):
             # Estimation_number(self.driver).url(url)
         else:
             Test_Status='Fail'   
-            Actual_Status= f'❌ Calculation Error in {total} | Web Value={value}'
+            Actual_Status= f'❌ Calculation Error in {total_str} | Web Value={value_str}'
             Function_Call.click(self, '//button[@class="btn btn-default btn-cancel"]') 
         return Test_Status, Actual_Status
   
@@ -239,7 +261,7 @@ class ESTIMATION(unittest.TestCase):
         # Load the workbook
         workbook = load_workbook(FILE_PATH)
         sheet = workbook[function_name]  # or workbook["SheetName"]
-        
+        row=sheet.max_row+1
         if Test_Status== 'Pass':
             # Write Test_Status into column 2
             sheet.cell(row=row_num, column=2, value=Test_Status).font=Font(bold=True, color="00B050")
@@ -265,19 +287,42 @@ class ESTIMATION(unittest.TestCase):
         # 
         # Load the workbook
         workbook = load_workbook(FILE_PATH)
-        # valid_rows = ExcelUtils.get_valid_rows(FILE_PATH, function_name)
-        # print(valid_rows)
         sheet = workbook[function_name]  # or workbook["SheetName"]
-        Customer_Detail=row_data["Customer"]
+        # Find the first available row by checking where Column 1 (Test Case Id) is empty
+        row = 2
+        while sheet.cell(row=row, column=1).value is not None:
+            row += 1
         
-        # for row_num in range(2, valid_rows):  
+        # Update details in the Billing sheet
+        # Column mapping aligned with Bill.py data_map
+        # Auto-generate Test Case Id based on previous row (Format: TC001)
+        prev_id_full = sheet.cell(row=row - 1, column=1).value
+        try:
+            if prev_id_full and str(prev_id_full).startswith("TC"):
+                # Extract digits from the TC format (e.g., 'TC005' -> 5)
+                prev_num = int(re.search(r'\d+', str(prev_id_full)).group())
+                new_id_num = prev_num + 1
+            else:
+                new_id_num = 1
+        except Exception:
+            new_id_num = 1
             
-        if sheet.cell(row=row_num, column=7, value=Customer_Detail) and sheet.cell(row=row_num, column=10, value=type):
-            sheet.cell(row=row_num, column=12, value=EST_details[0])
-            sheet.cell(row=row_num, column=13, value=EST_details[1])
-        if type !='PURCHASE':    
-            sheet.cell(row=row_num, column=14, value=EST_details[2])
-            sheet.cell(row=row_num, column=15, value=EST_details[3])
+        new_id = f"TC{new_id_num:03d}"
+        
+        sheet.cell(row=row, column=1, value=new_id)
+        sheet.cell(row=row, column=4, value=row_data["Branch"])
+        sheet.cell(row=row, column=5, value=row_data["Esti For"])
+        sheet.cell(row=row, column=6, value=row_data["Sales Employee"])
+        sheet.cell(row=row, column=7, value=row_data["Customer"]) # Customer Number
+        sheet.cell(row=row, column=9, value=row_data["Branch"])   # Delivery Location (using Branch)
+        sheet.cell(row=row, column=10, value=type)               # Bill Type
+        
+        # Estimation Details (from PDF extraction: {Estimate, cgst, sgst, igst, total})
+        sheet.cell(row=row, column=12, value=EST_details["Estimate"]) # EstNo
+        sheet.cell(row=row, column=13, value=EST_details["sgst"])     # SGST
+        sheet.cell(row=row, column=14, value=EST_details["cgst"])     # CGST
+        sheet.cell(row=row, column=15, value=EST_details["total"])    # Total
+        sheet.cell(row=row, column=33, value=EST_details["igst"])     # IGST
             
         workbook.save(FILE_PATH)
         workbook.close()

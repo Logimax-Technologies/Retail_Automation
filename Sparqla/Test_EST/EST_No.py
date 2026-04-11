@@ -94,46 +94,47 @@ class EstimationExtractor:
 
         # Extract all text with pdfplumber
         with pdfplumber.open(saved) as pdf:
-                full_text_parts=[]
+                data = {
+                    "Estimate": None,
+                    "cgst": "0.00",
+                    "sgst": "0.00",
+                    "igst": "0.00",
+                    "total": "0.00"
+                }
                 page=pdf.pages[0]
                 text = page.extract_text()
                 for line in text.split('\n'):
                     # print(line)
                     estimate=re.search(r"Estimate\s*[:\-]?\s*(\d+)", line, re.I) 
                     if estimate:
-                        Estimate= estimate.group(1)
-                        full_text_parts.append(Estimate)
-                        print("Estimate =",Estimate)
+                        data["Estimate"] = estimate.group(1)
+                        print("Estimate =", data["Estimate"])
                         
-                    else:
-                        pass
-                    cgst=re.search(r"CGST.*?(\d+\.\d{2})", line, re.I)
+                    cgst=re.search(r"CGST.*?\s+([\d,]+\.\d{2})\s*$", line, re.I)
                     if cgst:
-                        Cgst= cgst.group(1)
-                        print("Cgst =",Cgst)
-                        full_text_parts.append(Cgst)
-                    else:
-                        pass
-                    sgst=re.search(r"SGST.*?(\d+\.\d{2})", line, re.I)
+                        data["cgst"] = cgst.group(1)
+                        print("Cgst =", data["cgst"])
+
+                    sgst=re.search(r"SGST.*?\s+([\d,]+\.\d{2})\s*$", line, re.I)
                     if sgst:
-                        Sgst= sgst.group(1)
-                        print("Sgst =",Sgst)
-                        full_text_parts.append(Sgst)
-                    else:
-                        pass
+                        data["sgst"] = sgst.group(1)
+                        print("Sgst =", data["sgst"])
+
+                    igst=re.search(r"IGST.*?\s+([\d,]+\.\d{2})\s*$", line, re.I)
+                    if igst:
+                        data["igst"] = igst.group(1)
+                        print("Igst =", data["igst"])
+
+                    # Corrected Total extraction: Check second pattern only if first fails to avoid double entries
                     total=re.search(r"^Total\s*:\s*Rs\.?\s*([\d,]+\.\d{2})", line, re.I)
                     if total:
-                        Total= total.group(1)
-                        print("Total =",Total)
-                        full_text_parts.append(Total)
+                        data["total"] = total.group(1)
+                        print("Total =", data["total"])
                     else:
-                        pass
-                    total=re.search(r"^Total\s*:\s*Rs\.?\s*(-?[\d,]+\.\d{2})", line, re.I)
-                    if total:
-                        Total= total.group(1)
-                        print("Total =",Total)
-                        full_text_parts.append(Total)
-                    else:
-                        pass
-                print(full_text_parts)    
-                return full_text_parts
+                        total=re.search(r"^Total\s*:\s*Rs\.?\s*(-?[\d,]+\.\d{2})", line, re.I)
+                        if total:
+                            data["total"] = total.group(1)
+                            print("Total =", data["total"])
+                
+                print(data)    
+                return data

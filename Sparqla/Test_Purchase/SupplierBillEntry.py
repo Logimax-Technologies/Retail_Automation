@@ -93,12 +93,20 @@ class SupplierBillEntry(unittest.TestCase):
 
                 print(f"🏁 Test Result: {result[0]} - {result[1]}")
                 GRN_no = result[2] if (len(result) > 2 and result[2]) else str(row_data["GRNNumber"])
-                print(f"GRN Number: {GRN_no}")
-                self._update_excel_status(row_num, result[0], result[1], sheet_name, GRN_no)
+                job_id = result[3] if (len(result) > 3 and result[3]) else None
+                print(f"DEBUG: GRN={GRN_no}, JobID={job_id}")
 
+                po_no = None
                 if result[0] == "Pass" and "CANCEL" not in tc_id:
-                    list_result = self.test_list_verification_flow(GRN_no, row_data)
+                    list_result = self.test_list_verification_flow(GRN_no, row_data, job_id=job_id)
                     print(f"📊 List Page Verification: {list_result[0]} - {list_result[1]}")
+                    
+                    po_no = list_result[2] if len(list_result) > 2 else None
+                    if po_no:
+                        print(f"📝 Captured Po No: {po_no}")
+
+                # Consolidate status updates to a single call after verification
+                self._update_excel_status(row_num, result[0], result[1], sheet_name, GRN_no, po_no=po_no, hallmark=str(row_data.get("Hallmark", "")))
 
             except Exception as e:
                 print(f"❌ Test Case {row_data['TestCaseId']} failed: {e}")
@@ -178,9 +186,9 @@ class SupplierBillEntry(unittest.TestCase):
                 current_field = "Ref No"
                 Function_Call.fill_input(self, wait, (By.NAME, "order[po_supplier_ref_no]"), str(row_data["RefNo"]), "RefNo", row_num, Sheet_name=sheet_name)
             
-            if row_data.get("RefDate"):
-                current_field = "Ref Date"
-                Function_Call.fill_input(self, wait, (By.NAME, "order[po_ref_date]"), str(row_data["RefDate"]), "RefDate", row_num, Sheet_name=sheet_name, Date_range='past_or_current')
+            # if row_data.get("RefDate"):
+            #     current_field = "Ref Date"
+            #     Function_Call.fill_input(self, wait, (By.NAME, "order[po_ref_date]"), str(row_data["RefDate"]), "RefDate", row_num, Sheet_name=sheet_name, Date_range='past_or_current')
 
             if row_data.get("AgainstKarigarIssue"):
                 current_field = "Against Karigar Issue"
@@ -250,16 +258,20 @@ class SupplierBillEntry(unittest.TestCase):
             main_window = self.driver.current_window_handle
             current_field = "Submit Button"
             Function_Call.click(self, '//button[@id="submit_pur_entry"]')
-            sleep(2)
-            self._handle_print_tab(main_window)
-            sleep(2)
+            job_id = self._handle_print_tab(main_window)
+            sleep(9)
+
             try:
                 current_field = "Capture Success Message"
-                msg = wait.until(EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'alert-success')]"))).text.strip()
+                msg_element = wait.until(EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'alert-success')]")))
+                msg = msg_element.text.strip()
+                print(f"DEBUG: captured message: {msg}")
                 if "Purchase Entry added successfully" in msg: 
-                    return ("Pass", "✅ Purchase Entry added successfully", row_data["GRNNumber"])
-                return ("Fail", f"Unexpected: {msg}")
-            except: return ("Fail", "Success message not encountered")
+                    match = re.search(r"successfully\s*[:\s]*([A-Z0-9-]+)", msg)
+                    captured_grn = match.group(1) if match else row_data.get("GRNNumber") or ""
+                    return ("Pass", f"✅ Purchase Entry added successfully: {captured_grn}", captured_grn, job_id)
+                return ("Fail", f"Unexpected: {msg}", None, job_id)
+            except: return ("Fail", "Success message not encountered", None, job_id)
 
         except Exception as e:
             self._take_screenshot(f"Error_TC{row_data['TestCaseId']}")
@@ -271,9 +283,10 @@ class SupplierBillEntry(unittest.TestCase):
                 self._cancel_form()
             return ("Fail", f"Error in {current_field}: {str(e)}")
 
-    def test_list_verification_flow(self, GRN_no, row_data):
+    def test_list_verification_flow(self, GRN_no, row_data, job_id=None):
         driver, wait = self.driver, self.wait
         current_field = "Verification Start"
+        search_val = job_id if job_id else GRN_no
         try:
             current_field = "Filter Today"
             Function_Call.click(self, '//button[@id="sbe-dt-btn"]')
@@ -283,14 +296,34 @@ class SupplierBillEntry(unittest.TestCase):
             search_xpath = '//div[@id="pur_entry_list_filter"]//input'
             search = wait.until(EC.presence_of_element_located((By.XPATH, search_xpath)))
             search.clear()
-            search.send_keys(GRN_no)
+            search.send_keys(search_val)
             sleep(2)
             
-            current_field = "Table Row Search"
-            table_xpath = f'//table[@id="pur_entry_list"]//tr[contains(., "{GRN_no}")]'
-            if driver.find_elements(By.XPATH, table_xpath):
-                return ("Pass", "Verified in list")
-            return ("Fail", f"GRN {GRN_no} not found in list")
+            current_field = f"Table Row Search for {search_val}"
+            table_xpath = f'//table[@id="pur_entry_list"]//tr[contains(., "{search_val}")]'
+            rows = driver.find_elements(By.XPATH, table_xpath)
+            if rows:
+                # Capture PO Number from column 5 (at the targeted job_id row)
+                try:
+                    po_no = rows[0].find_element(By.XPATH, "./td[5]").text.strip()
+                    
+                    # Click checkbox for the captured row
+                    Function_Call.click(self, f'//table[@id="pur_entry_list"]//tr[contains(., "{search_val}")]//input[@type="checkbox"]')
+                    sleep(1)
+                    
+                    # Click Approve button
+                    Function_Call.click(self, '//button[contains(text(), "Approve")]')
+                    sleep(2)
+                    
+                    # Handle confirmation alert
+                    Function_Call.alert(self)
+                    sleep(1)
+
+                    print(f"📍 Successfully found PO No: {po_no} for Job ID: {search_val}")
+                    return ("Pass", f"Verified in list. PO No: {po_no}", po_no)
+                except:
+                    return ("Pass", "Verified in list but PO No extraction failed")
+            return ("Fail", f"Value {search_val} not found in list")
         except Exception as e:
             return ("Fail", f"Error in {current_field}: {str(e)}")
 
@@ -359,14 +392,73 @@ class SupplierBillEntry(unittest.TestCase):
         except Exception as e:
             return ("Fail", f"Error in {current_field}: {str(e)}")
 
-    def _update_excel_status(self, row_num, test_status, actual_status, sheet_name, ref_no=""):
+    def _update_excel_status(self, row_num, test_status, actual_status, sheet_name, ref_no="", po_no=None, hallmark=""):
         try:
+            print(ref_no)
             workbook = load_workbook(FILE_PATH)
             sheet = workbook[sheet_name]
+            tc_id = sheet.cell(row=row_num, column=1).value
+            
             color = "00B050" if test_status == "Pass" else "FF0000"
             sheet.cell(row=row_num, column=2, value=test_status).font = Font(bold=True, color=color)
             sheet.cell(row=row_num, column=3, value=actual_status).font = Font(bold=True, color=color)
+            sheet.cell(row=row_num, column=4, value=ref_no).font = Font(bold=True)
+            
+            # Store PO No back into column 14 if captured
+            if po_no:
+                sheet.cell(row=row_num, column=14, value=po_no).font = Font(bold=True)
+            
             sheet.cell(row=row_num, column=30, value=f"{test_status} - {actual_status}").font = Font(color=color)
+            
+            # Dynamic Row Mapping Formula (1:2 mapping)
+            # SupplierBillEntry Row 2 -> Auxiliary Rows 2 & 3
+            # SupplierBillEntry Row 3 -> Auxiliary Rows 4 & 5
+            issue_idx = (row_num - 2) * 2 + 2
+            receipt_idx = issue_idx + 1
+            tc_issue = f"TC{issue_idx - 1:03d}"
+            tc_receipt = f"TC{receipt_idx - 1:03d}"
+
+            # Update HMIssueReceipt sheet logic (Specifically for unique rows based on row_num)
+            if test_status == "Pass" and str(hallmark).lower() == "no":
+                hm_sheet_name = "HMIssueReceipt"
+                if hm_sheet_name in workbook.sheetnames:
+                    hm_sheet = workbook[hm_sheet_name]
+                    target_ref = po_no if po_no else ref_no
+                    
+                    if target_ref:
+                        # Sequential Issue Row
+                        hm_sheet.cell(row=issue_idx, column=1, value=tc_issue).font = Font(bold=True)
+                        hm_sheet.cell(row=issue_idx, column=4, value="issue")
+                        hm_sheet.cell(row=issue_idx, column=6, value=target_ref).font = Font(bold=True)
+                        
+                        # Sequential Receipt Row
+                        hm_sheet.cell(row=receipt_idx, column=1, value=tc_receipt).font = Font(bold=True)
+                        hm_sheet.cell(row=receipt_idx, column=4, value="receipt")
+                        hm_sheet.cell(row=receipt_idx, column=6, value=target_ref).font = Font(bold=True)
+                        
+                        print(f"📝 Linked {target_ref} to {hm_sheet_name} (Rows {issue_idx}/{receipt_idx})")
+
+            # Update QCIssueReceipt sheet logic (Specifically for unique rows based on row_num)
+            if test_status == "Pass":
+                qc_sheet_name = "QCIssueReceipt"
+                if qc_sheet_name in workbook.sheetnames:
+                    qc_sheet = workbook[qc_sheet_name]
+                    target_ref = po_no if po_no else ref_no
+                    
+                    if target_ref:
+                        # Sequential Issue Row
+                        qc_sheet.cell(row=issue_idx, column=1, value=tc_issue).font = Font(bold=True)
+                        qc_sheet.cell(row=issue_idx, column=4, value="issue")
+                        qc_sheet.cell(row=issue_idx, column=6, value=target_ref).font = Font(bold=True)
+                        
+
+                        # Sequential Receipt Row
+                        qc_sheet.cell(row=receipt_idx, column=1, value=tc_receipt).font = Font(bold=True)
+                        qc_sheet.cell(row=receipt_idx, column=4, value="receipt")
+                        qc_sheet.cell(row=receipt_idx, column=6, value=target_ref).font = Font(bold=True)
+                        
+                        print(f"📝 Linked {target_ref} to {qc_sheet_name} (Rows {issue_idx}/{receipt_idx})")
+
             workbook.save(FILE_PATH)
             workbook.close()
         except Exception as e:
@@ -377,33 +469,31 @@ class SupplierBillEntry(unittest.TestCase):
         self.driver.save_screenshot(path)
 
     def _handle_print_tab(self, main_window):
-        """Helper to close print tab and return focus to main window"""
+        """Helper to close print tab and return focus to main window while capturing job ID from URL"""
         sleep(5)  # Wait for print tab to open
+        job_id = None
         try:
-            # Get all open window handles
-            all_handles = self.driver.window_handles
-            if len(all_handles) > 1:
-                print(f"📄 Closing print tab. Total windows: {len(all_handles)}")
-                for handle in all_handles:
-                    if handle != main_window:
-                        self.driver.switch_to.window(handle)
-                        self.driver.close()
-            self.driver.switch_to.window(main_window)
-            
+            windows = self.driver.window_handles
+            if len(windows) > 1:
+                self.driver.switch_to.window(windows[1])
+                current_url = self.driver.current_url
+                print(f"DEBUG: Print Tab URL: {current_url}")
+                # ID is at the end of URL: .../purchase/job_receipt/1067
+                match = re.search(r"/(\d+)$", current_url)
+                if match:
+                    job_id = match.group(1)
+                    print(f"🔍 Captured Job ID from URL: {job_id}")
+                
+                self.driver.close()
+                self.driver.switch_to.window(windows[0])
+            else:
+                print("⚠️ Print tab not opened found")
         except Exception as e:
             print(f"⚠️ Print tab handling failed: {e}")
-            # Last resort: switch to the first available window
             try:
-                windows = self.driver.window_handles
-                if len(windows) > 0:
-                    print('length of windows',len(windows)) 
-                    # Try to go back to the first available window
-                    self.driver.switch_to.window(windows[1])
-                    self.driver.close()
-                    self.driver.switch_to.window(windows[0])
-            except:
-                pass
-            
+                self.driver.switch_to.window(main_window)
+            except: pass
+        return job_id
 
     def _cancel_form(self):
         try:

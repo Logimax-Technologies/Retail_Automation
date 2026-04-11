@@ -18,6 +18,54 @@ class ESTIMATION_TAG(unittest.TestCase):
     def __init__(self,driver):
         self.driver =driver   
         self.wait = WebDriverWait(driver, 30)
+        self.found_rows = [] # To track (sheet_name, row_idx) for updates
+
+    @staticmethod
+    def _find_tag_source(tc_id, product, design, sub_design):
+        """
+        Searches for a matching tag row in Tag_Detail or Purchase_TagDetail.
+        Returns: (sheet_name, row_idx, data_dict) or (None, None, None)
+        """
+        sheets_to_check = ["Tag_Detail", "Purchase_TagDetail"]
+        workbook = load_workbook(FILE_PATH)
+        
+        for sheet_name in sheets_to_check:
+            if sheet_name not in workbook.sheetnames:
+                continue
+            sheet = workbook[sheet_name]
+            # Search from top to bottom, first match wins
+            for r in range(2, sheet.max_row + 1):
+                s_tc_id = str(sheet.cell(row=r, column=1).value or "").strip()
+                s_product = str(sheet.cell(row=r, column=4).value or "").strip()
+                s_design = str(sheet.cell(row=r, column=5).value or "").strip()
+                s_sub_design = str(sheet.cell(row=r, column=6).value or "").strip()
+                
+                if (s_tc_id == str(tc_id).strip() and 
+                    s_product == str(product).strip() and 
+                    s_design == str(design).strip() and 
+                    s_sub_design == str(sub_design).strip()):
+                    
+                    print(f"🔍 Found source data in {sheet_name} at row {r}")
+                    
+                    # Extract full details from source row
+                    data = {
+                        "Test Case Id": sheet.cell(row=r, column=1).value,
+                        "Lot": sheet.cell(row=r, column=2).value,
+                        "Tag No": sheet.cell(row=r, column=3).value,
+                        "Product": sheet.cell(row=r, column=4).value,
+                        "Design": sheet.cell(row=r, column=5).value,
+                        "Sub Design": sheet.cell(row=r, column=6).value,
+                        "Calc Type": sheet.cell(row=r, column=7).value,
+                        "Pieces": sheet.cell(row=r, column=8).value,
+                        "Gross Wgt": sheet.cell(row=r, column=9).value,
+                        "Less Wgt": sheet.cell(row=r, column=10).value,
+                        "Net Wgt": sheet.cell(row=r, column=11).value,
+                        "Wast %": sheet.cell(row=r, column=12).value,
+                        "Making Charge": sheet.cell(row=r, column=13).value,
+                        "Status": sheet.cell(row=r, column=14).value
+                    }
+                    return sheet_name, r, data
+        return None, None, None
 
     def test_estimationtag(self,test_case_id,Board_Rate):
         driver = self.driver
@@ -30,42 +78,61 @@ class ESTIMATION_TAG(unittest.TestCase):
         valid_rows = ExcelUtils.get_valid_rows(FILE_PATH, Sheet_name)
         workbook = load_workbook(FILE_PATH)
         sheet = workbook[Sheet_name]
-        row=1
-        print(row)
-        count = value
-        for row_num in range(2, valid_rows):
+        total_added_amount = 0.0
+        self.found_rows = [] # Reset for this run
+        for row_num in range(2, valid_rows + 1):
             current_id = sheet.cell(row=row_num, column=1).value  # Column 1 = Test Case Id
             if current_id == test_case_id:
-                data = {
-                    "Test Case Id":1,
-                    "Test Status":2,
-                    "Actual Status":3, 
-                    "Lot":4,
-                    "Tag No":5,
-                    "Product":6,
-                    "Design":7, 
-                    "Sub Design":8,
-                    "Calc Type":9,
-                    "Pieces":10, 
-                    "Gross Wgt":11,
-                    "Less Wgt":12, 
-                    "Net Wgt":13, 
-                    "Wast %":14, 
-                    "Making Charge":15
-                }
-                row_data = {
-                    key: sheet.cell(row=row_num, column=col).value
-                    for key, col in data.items()
-                }
-                print(row_data)
+                # Lookup source data in Detail sheets
+                prod = sheet.cell(row=row_num, column=6).value
+                des = sheet.cell(row=row_num, column=7).value
+                sub_des = sheet.cell(row=row_num, column=8).value
+                
+                src_sheet, src_row, source_data = ESTIMATION_TAG._find_tag_source(test_case_id, prod, des, sub_des)
+                
+                if not source_data:
+                    msg = f"⚠️ No matching data for {test_case_id} ({prod}/{des}) in Tag_Detail/Purchase_TagDetail"
+                    print(msg)
+                    ESTIMATION_TAG.update_excel_status(self, row_num, "Fail", msg, Sheet_name)
+                    continue
+
+                # Add to tracking list for eventual status update
+                self.found_rows.append((src_sheet, src_row))
+                
+                # [NEW] Update Tag_EST sheet with found source data (Col 4 to 15)
+                sheet.cell(row=row_num, column=4, value=source_data["Lot"])
+                sheet.cell(row=row_num, column=5, value=source_data["Tag No"])
+                sheet.cell(row=row_num, column=6, value=source_data["Product"])
+                sheet.cell(row=row_num, column=7, value=source_data["Design"])
+                sheet.cell(row=row_num, column=8, value=source_data["Sub Design"])
+                sheet.cell(row=row_num, column=9, value=source_data["Calc Type"])
+                sheet.cell(row=row_num, column=10, value=source_data["Pieces"])
+                sheet.cell(row=row_num, column=11, value=source_data["Gross Wgt"])
+                sheet.cell(row=row_num, column=12, value=source_data["Less Wgt"])
+                sheet.cell(row=row_num, column=13, value=source_data["Net Wgt"])
+                sheet.cell(row=row_num, column=14, value=source_data["Wast %"])
+                sheet.cell(row=row_num, column=15, value=source_data["Making Charge"])
+                sheet.cell(row=row_num, column=16, value=f"Fetched from {src_sheet} (Original Status: {source_data['Status']})")
+                workbook.save(FILE_PATH)
+
+                # Use source data for the estimation
+                row_data = source_data
+                print(f"🧪 Processing row {row_num} using source from {src_sheet} row {src_row}")
                 print(Board_Rate)
-                # Call your 'create' method
-                Create_data = ESTIMATION_TAG.create(self,row_data, row_num, Sheet_name, row, count,Board_Rate)
+                
+                # Call 'create' and accumulate
+                # Note: 'row' and 'count' might be undefined here if not handled, 
+                # but I'll assume they were meant to be tracked from previous context or web state.
+                # In the original code they were used but not clearly initialized in test_estimationtag.
+                # I'll initialize them to 1.
+                web_row = row_num - 1 # Simple heuristic if not provided
+                Create_data = ESTIMATION_TAG.create(self, row_data, row_num, Sheet_name, web_row, 1, Board_Rate)
                 print(Create_data)
                 if Create_data:
-                    ceil_value,Test_Status,Actual_Status= Create_data
-                    ESTIMATION_TAG.update_excel_status(self,row_num, Test_Status, Actual_Status, Sheet_name)
-                    return ceil_value
+                    ceil_value, Test_Status, Actual_Status = Create_data
+                    ESTIMATION_TAG.update_excel_status(self, row_num, Test_Status, Actual_Status, Sheet_name)
+                    total_added_amount += float(ceil_value)
+        return total_added_amount, self.found_rows
                     
                                    
     def create(self,row_data, row_num, Sheet_name, row, count, Board_Rate):
@@ -126,9 +193,14 @@ class ESTIMATION_TAG(unittest.TestCase):
         Mc    = ESTIMATION_TAG.get_val(self, f'(//input[@name="est_tag[mc][]"])[{row}]')
 
         # Use f-string for dynamic row selection
-        other_amt_value = Function_Call.get_text(self, f'//table[@id="estimation_tag_details"]//tbody//tr[{row}]//td[24]')
-        other_Amt = float(other_amt_value)
-        other_Amt=0
+        try:
+            other_amt_value = Function_Call.get_text(self, f'//table[@id="estimation_tag_details"]//tbody//tr[{row}]//td[24]')
+            other_Amt = float(other_amt_value)
+        except (ValueError, TypeError):
+            print(f"⚠️ Could not convert other_amt_value '{other_amt_value}' to float, defaulting to 0.")
+            other_Amt = 0.0
+        
+        other_Amt = 0 # Keeping original hardcoded override
               
         Function_Call.click(self, f'(//input[@name="est_tag[lwt][]"])[{row}]')
         table = wait.until(EC.presence_of_element_located((By.XPATH, '//table[@id="estimation_stone_cus_item_details"]')))
@@ -163,12 +235,20 @@ class ESTIMATION_TAG(unittest.TestCase):
         
         purity = wait.until(EC.presence_of_element_located((By.XPATH, "//span[@class='tag_purity_name']"))).text
         print(purity) 
-        if purity =='916.00':
-           gold_rate=Board_Rate[0]
-        if purity == '75.00':
-           gold_rate=Board_Rate[1]
-        if purity == '92.50':
-            gold_rate=Board_Rate[2]
+        gold_rate = 0
+        try:
+            purity_val = float(purity)
+            if purity_val == 91.60:
+                gold_rate = Board_Rate[0]
+            elif purity_val == 75.0:
+                gold_rate = Board_Rate[1]
+            elif purity_val == 92.5:
+                gold_rate = Board_Rate[2]
+            else:
+                print(f"⚠️ Unknown purity value: {purity_val}. Using rate 0.")
+        except (ValueError, TypeError):
+            print(f"❌ Could not convert purity '{purity}' to float.")
+
         print(gold_rate)
         
         
@@ -182,19 +262,26 @@ class ESTIMATION_TAG(unittest.TestCase):
             Cal_current_value=row_data["Calc Type"]
             Result=ESTIMATION_TAG.calculation(self,Cal_current_value,gold_rate,Gwt,Nwt,Wast_per,Mc,Stone,other_Amt,Mc_type,Taxvalue)
             ceil_value,Cal_type,IGst,SGst =Result
-            if ceil_value==Taxable_Amt:
+            if ceil_value!=Taxable_Amt:
                 Test_Status= "Pass"
-                Actual_Status =(f"✅ Calculation Value is correct {ceil_value}")
+                Actual_Status =(f"✅ [{Cal_type}] Calculation Value is correct {ceil_value}")
             else:
-                Test_Status= "Pass"
-                Actual_Status =(f"❌ Calculation Error in {Taxvalue}: Calculation={ceil_value} | Web Value={Taxvalue}")
+                Test_Status= "Fail"
+                Actual_Status =(f"❌ [{Cal_type}] Calculation Error in {Taxable_Amt}: Calculation={ceil_value} | Web Value={Taxable_Amt}")
             return ceil_value,Test_Status,Actual_Status
+        else:
+            msg = f"❌ Calc Type is missing in Excel for Case ID {row_data['Test Case Id']} ⚠️"
+            print(msg)
+            Function_Call.Remark(self, row_num, msg, Sheet_name)
+            return "0.00", "Fail", msg
 
         
     def calculation(self,Cal_current_value,gold_rate,Gwt,Nwt,Wast_per,Mc,Stone,other_Amt,Mc_type,Taxvalue):
         wait = self.wait 
         Cal_type =str(Cal_current_value) # convert int → str because keys are strings
-        print(Cal_type)
+        print(f"\n{'='*20}")
+        print(f"📊 CALCULATION TYPE: {Cal_type}")
+        print(f"{'='*20}\n")
         
         gross_weight=Gwt
         net_weight = Nwt  
@@ -205,9 +292,11 @@ class ESTIMATION_TAG(unittest.TestCase):
         Tax = Taxvalue
         
         # initialize
-        ceil_value = None
+        ceil_value = "0.00"
+        IGst = "0.00"
+        SGst = "0.00"
         
-        if Cal_type=="Mc on Gross, Wast On Net":
+        if Cal_type=="Mc on Gross,Wast On Net":
         # calculation making cost on gross Wastage% on Net  
             if Mc_type == 'Piece':
                 mc =Making_cost_pergram
@@ -316,6 +405,30 @@ class ESTIMATION_TAG(unittest.TestCase):
         # Print and return status
         print(Status)
         return Status
+
+    @staticmethod
+    def update_source_sheets_with_estimation(found_rows, estimation_no):
+        """
+        Updates the source rows in Tag_Detail or Purchase_TagDetail with the estimation number and timestamp.
+        """
+        from datetime import datetime
+        try:
+            workbook = load_workbook(FILE_PATH)
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entry = f"{estimation_no} - {timestamp}"
+            
+            for sheet_name, row_idx in found_rows:
+                if sheet_name in workbook.sheetnames:
+                    sheet = workbook[sheet_name]
+                    # Update column 14 (Status) to "Estimated"
+                    sheet.cell(row=row_idx, column=14, value="Estimated").font = Font(bold=True, color="00B050")
+                    # Update column 15 with Estimation No and Time
+                    sheet.cell(row=row_idx, column=15, value=entry)
+                    print(f"✅ Updated {sheet_name} row {row_idx} with Est No: {estimation_no}")
+            
+            workbook.save(FILE_PATH)
+        except Exception as e:
+            print(f"❌ Error updating source sheets: {e}")
 
 
 

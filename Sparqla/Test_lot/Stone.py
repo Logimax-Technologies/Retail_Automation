@@ -18,9 +18,10 @@ class Stone(unittest.TestCase):
     def test_tagStone(self,Sheet_name,test_case_id):
         driver = self.driver
         wait = self.wait
+        Wt_gram = 0.0
+        TotalAmount = 0.0
         sleep(3)
         function_XPATH = Sheet_name
-        test_case_id = test_case_id
         value =ExcelUtils.Test_case_id_count(FILE_PATH, function_XPATH,test_case_id)
         print(value)
         valid_rows = ExcelUtils.get_valid_rows(FILE_PATH, function_XPATH)
@@ -28,6 +29,7 @@ class Stone(unittest.TestCase):
         sheet = workbook[function_XPATH]
         row=1
         count = value
+        stone_list = []
         for row_num in range(2, valid_rows):
             current_id = sheet.cell(row=row_num, column=1).value  # Column 1 = Test Case Id
             if current_id == test_case_id:
@@ -35,7 +37,7 @@ class Stone(unittest.TestCase):
                     "Test Case Id": 1,
                     "Less Weight": 2,  
                     "Type": 3,
-                    "XPATH": 4,
+                    "Name": 4,
                     "Code": 5,
                     "Pcs": 6,
                     "Wt": 7,
@@ -48,6 +50,7 @@ class Stone(unittest.TestCase):
                     key: sheet.cell(row=row_num, column=col).value
                     for key, col in data.items()
                 }
+                stone_list.append(row_Stonedata)
                 print(row_Stonedata)
               
                 Lwt = "(//select[@name='est_stones_item[show_in_lwt][]'])[{}]".format(row)
@@ -55,21 +58,23 @@ class Stone(unittest.TestCase):
                 wait.until(EC.element_to_be_clickable((By.XPATH,Lwt))).click()
                 print(row_Stonedata["Less Weight"])
                 Select(wait.until(EC.element_to_be_clickable(
-                    (By.XPATH,Lwt)))).select_by_visible_text(row_Stonedata["Less Weight"])
+                    (By.XPATH,Lwt)))).select_by_visible_text(str(row_Stonedata["Less Weight"]).strip())
                 
                 wait.until(EC.element_to_be_clickable(
                     (By.XPATH,"(//select[@name='est_stones_item[stones_type][]'])[{}]".format(row)))).click()
                 Select(wait.until(EC.element_to_be_clickable(
-                    (By.XPATH,"(//select[@name='est_stones_item[stones_type][]'])[{}]".format(row))))).select_by_visible_text(row_Stonedata["Type"])
+                    (By.XPATH,"(//select[@name='est_stones_item[stones_type][]'])[{}]".format(row))))).select_by_visible_text(str(row_Stonedata["Type"]).strip())
+                sleep(2)
                 wait.until(EC.element_to_be_clickable(
                     (By.XPATH,"(//select[@name='est_stones_item[stone_id][]'])[{}]".format(row)))).click()
                 Select(wait.until(EC.element_to_be_clickable(
-                    (By.XPATH,"(//select[@name='est_stones_item[stone_id][]'])[{}]".format(row))))).select_by_visible_text(row_Stonedata["XPATH"])
+                    (By.XPATH,"(//select[@name='est_stones_item[stone_id][]'])[{}]".format(row))))).select_by_visible_text(str(row_Stonedata["Name"]).strip())
+                sleep(2)
    
                 wait.until(EC.element_to_be_clickable(
                     (By.XPATH,"(//select[@name='est_stones_item[quality_id][]'])[{}]".format(row)))).click()
                 Select(wait.until(EC.element_to_be_clickable(
-                    (By.XPATH,"(//select[@name='est_stones_item[quality_id][]'])[{}]".format(row))))).select_by_visible_text(row_Stonedata["Code"])
+                    (By.XPATH,"(//select[@name='est_stones_item[quality_id][]'])[{}]".format(row))))).select_by_visible_text(str(row_Stonedata["Code"]).strip().upper())
 
                 pcs="(//input[@name='est_stones_item[stone_pcs][]'])[{}]".format(row)
                 print(pcs)
@@ -88,7 +93,7 @@ class Stone(unittest.TestCase):
                 wait.until(EC.visibility_of_element_located(
                     (By.XPATH,"(//select[@name='est_stones_item[uom_id][]'])[{}]".format(row)))).click()
                 Select(wait.until(EC.visibility_of_element_located(
-                    (By.XPATH,"(//select[@name='est_stones_item[uom_id][]'])[{}]".format(row))))).select_by_visible_text(row_Stonedata['Wt Type'])
+                    (By.XPATH,"(//select[@name='est_stones_item[uom_id][]'])[{}]".format(row))))).select_by_visible_text(str(row_Stonedata['Wt Type']).strip().lower())
            
                 if row_Stonedata["Cal.Type"]== "Wt":      
                     wait.until(EC.element_to_be_clickable(
@@ -129,7 +134,7 @@ class Stone(unittest.TestCase):
                     wait.until(EC.element_to_be_clickable(
                         (By.XPATH,'(//button[@class="btn btn-success btn-xs create_stone_item_details"])[{}]'.format(row)))).click()
                     row=row+1
-                    count=value-1
+                    count -= 1
                 else:
                     rows_wt=driver.find_elements(By.XPATH, '//input[@name="est_stones_item[stone_wt][]"]')
                     wt = Stone.test_tablevalue(self,rows_wt)
@@ -137,18 +142,16 @@ class Stone(unittest.TestCase):
                     Wt_gram = wait.until(EC.visibility_of_element_located(
                         (By.XPATH,"//table[@id='estimation_stone_cus_item_details']/tfoot/tr/td[6]"))).text
                     print(Wt_gram)
-                    if row_Stonedata["Wt Type"]=="carat":
+                    if str(row_Stonedata["Wt Type"]).lower().strip() == "carat":
                         carat = float(wt)
-                        value = carat / 5
-                        grams = f"{value:.3f}"
-                        # Calculate grams
-                        #print(f"{carat} carats is {grams} grams")
-                        if Wt_gram == grams:
+                        grams_calculated = carat * 0.2
+                        # grams = f"{value:.3f}"
+                        if abs(float(Wt_gram) - grams_calculated) < 0.001:
                             print("Carat to gram calculation correct")
                         else:
                             print("Carat to gram calculation not correct")
-                    if row_Stonedata["Wt Type"]=="gram":
-                        if Wt_gram == wt:
+                    if str(row_Stonedata["Wt Type"]).lower().strip() == "gram":
+                        if abs(float(Wt_gram) - float(wt)) < 0.001:
                            print("Weight total is correct")
                         else:
                            print("Weight total is not correct")  
@@ -162,17 +165,19 @@ class Stone(unittest.TestCase):
                         (By.XPATH,'//input[@name="est_stones_item[stone_price][]"]')))
                     Table_rate = Stone.test_tablevalue(self,Table_amount)
                     print(Table_rate)
-                    if   Table_rate == TotalAmount:
+                    if  abs(Table_rate - TotalAmount) < 0.01:
                         print("Amount total is correct")  
                     else:
                         print("Amount total is not correct")    
                     break
             else:
                 print('No')         
+        sleep(2)  # Wait for final UI calculations
         wait.until(EC.element_to_be_clickable(
             (By.XPATH,'(//button[@id="update_stone_details"])[2]'))).click()
+
         Lwt_add = "Less weight detail Add successfully"
-        data = Lwt_add,Wt_gram,TotalAmount
+        data = Lwt_add,Wt_gram,TotalAmount, stone_list
         print(data)
         return data
         

@@ -32,9 +32,9 @@ class stone(unittest.TestCase):
                 # continue
                 # Map Excel row to dict
                 data_map = {
-                    "Test Case Id": 1, "Less Weight": 2, "Type": 3, "Name": 4,
-                    "Pcs": 5, "Wt": 6, "Wt Type": 7,
-                    "Cal.Type": 8, "Rate": 9, "Amount": 10
+                    "Test Case Id": 1, "Less Weight": 2, "Type": 3, "Name": 4, "Code": 5,
+                    "Pcs": 6, "Wt": 7, "Wt Type": 8,
+                    "Cal.Type": 9, "Rate": 10, "Amount": 11
                 }
                 row_Stonedata = {
                     k: sheet.cell(row=row_num, column=v).value for k, v in data_map.items()
@@ -47,6 +47,7 @@ class stone(unittest.TestCase):
                 # --- Fill dropdowns ---
                 Function_Call.select_visible_text(self,f"(//select[@name='est_stones_item[stones_type][]'])[{row}]", row_Stonedata["Type"])
                 Function_Call.select_visible_text(self,f"(//select[@name='est_stones_item[stone_id][]'])[{row}]", row_Stonedata["Name"])
+                Function_Call.select_visible_text(self,f"(//select[@name='est_stones_item[quality_id][]'])[{row}]", row_Stonedata["Code"])
 
                 # --- Fill inputs ---
                 if row_Stonedata["Pcs"]:
@@ -60,8 +61,7 @@ class stone(unittest.TestCase):
                     row_num=row_num,
                     Sheet_name=sheet_name
                     )
-                    Error_field_val.extend(errors)
-                    print(Error_field_val)
+                    
                 else:
                     msg = f"'{None}' → Pcs field is mandatory ⚠️"
                     Mandatory_field.append("Pcs"); print(msg); Function_Call.Remark(self,row_num, msg,sheet_name)
@@ -78,8 +78,7 @@ class stone(unittest.TestCase):
                     row_num=row_num,
                     Sheet_name=sheet_name
                     )
-                    Error_field_val.extend(errors)
-                    print(Error_field_val)
+                    
                 else:
                     msg = f"'{None}' → Wt field is mandatory ⚠️"
                     Mandatory_field.append("Wt"); print(msg); Function_Call.Remark(self,row_num, msg,sheet_name)
@@ -104,8 +103,7 @@ class stone(unittest.TestCase):
                     row_num=row_num,
                     Sheet_name=sheet_name
                     )
-                    Error_field_val.extend(errors)
-                    print(Error_field_val)
+                    
                 else:
                     msg = f"'{None}' → Rate field is mandatory ⚠️"
                     Mandatory_field.append("Rate"); print(msg); Function_Call.Remark(self,row_num, msg,sheet_name)

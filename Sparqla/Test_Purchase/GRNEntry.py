@@ -101,13 +101,14 @@ class GRNEntry(unittest.TestCase):
 
                 print(f"🏁 Test Result: {result[0]} - {result[1]}")
                 grn_no = result[2] if (len(result) > 2 and result[2]) else ""
-                self._update_excel_status(row_num, result[0], result[1], sheet_name, grn_no)
+                # self._update_excel_status(row_num, result[0], result[1], sheet_name, grn_no)
 
                 # If save successful, verify in list page
                 if result[0] == "Pass" and "CANCEL" not in tc_id and "EDIT" not in tc_id:
                     print(f"🔍 Verifying GRN {grn_no} in List Page...")
                     list_result = self.test_GRN_list_verification(grn_no, row_data)
                     print(f"📊 List Page Verification: {list_result[0]} - {list_result[1]}")
+                    self._update_excel_status(row_num, list_result[0], list_result[1], sheet_name, grn_no)
 
             except Exception as e:
                 print(f"❌ Test Case {row_data['TestCaseId']} failed with exception: {e}")
@@ -1059,6 +1060,14 @@ class GRNEntry(unittest.TestCase):
             # Col 21: GRNNo
             if grn_no:
                 sheet.cell(row=row_num, column=21, value=grn_no)
+                
+                # Also update SupplierBillEntry column 4 (GRNNumber)
+                target_sheet_name = "SupplierBillEntry"
+                if target_sheet_name in workbook.sheetnames:
+                    target_sheet = workbook[target_sheet_name]
+                    target_sheet.cell(row=row_num, column=4, value=grn_no).font = Font(bold=True)
+                    print(f"📝 Linked {grn_no} to {target_sheet_name} (Row {row_num})")
+
             # Col 24: Remark
             sheet.cell(row=row_num, column=24,
                        value=f"{test_status} - {actual_status}").font = Font(color=color)

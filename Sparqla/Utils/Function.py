@@ -50,9 +50,11 @@ class Function_Call(unittest.TestCase):
             try:
                 # Scroll into view (center)
                 driver.execute_script("arguments[0].scrollIntoView({block: 'center', inline: 'nearest'});", element)
-                sleep(0.5)
-                # Traditional click
-                wait.until(EC.element_to_be_clickable((By.XPATH, xpath))).click()
+                sleep(1) # Added stabilization sleep
+                
+                # Verify it's clickable
+                clickable_element = wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
+                clickable_element.click()
                 print("✅ Clicked (Standard):", xpath)
                 return
             except Exception as e:
@@ -143,6 +145,17 @@ class Function_Call(unittest.TestCase):
         field.send_keys(value)
         sleep(2)
         field.send_keys(Keys.BACKSPACE)
+        
+        wait.until(EC.presence_of_element_located((By.XPATH, f"//li[contains(text(),'{value}')]"))).click()  
+        
+    def fill_autocomplete_field2(self, field_id, value):
+        driver, wait = self.driver, self.wait
+        field = wait.until(EC.element_to_be_clickable((By.XPATH, field_id)))
+        field.click()
+        field.clear()
+        field.send_keys(value)
+        sleep(2)
+        field.send_keys(Keys.BACKSPACE)
 
         wait.until(EC.presence_of_element_located((By.XPATH, f"//li[contains(text(),'{value}')]"))).click()   
             
@@ -181,7 +194,7 @@ class Function_Call(unittest.TestCase):
         entered_value = field.get_attribute("value")
         if entered_value == "" or entered_value=='0':
             driver.save_screenshot(os.path.join(ExcelUtils.SCREENSHOT_PATH, f"{screenshot_prefix}_{test_case_id}.png"))
-            msg = f"{value} → Not allowed in {field_name} ⚠️"
+            msg = f"{value} -> Not allowed in {field_name} [WARN]"
             Function_Call.Remark(self,row_num, msg, Sheet_name)
             errors.append(field_name)
             return "Fail",msg
@@ -198,43 +211,54 @@ class Function_Call(unittest.TestCase):
         
         if Date_range:
             try:
-                # Normalize separator to '-' for strptime compatibility
-                normalized_date = entered_value.replace("/", "-")
-                entered_date = datetime.strptime(normalized_date, "%d-%m-%Y").date()
+                # Multi-format date parsing for robust validation
+                entered_date = None
+                for fmt in ["%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%m-%d-%Y", "%m/%d/%Y"]:
+                    try:
+                        # Normalize separators if necessary
+                        clean_val = entered_value.strip()
+                        entered_date = datetime.strptime(clean_val, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                
+                if entered_date is None:
+                    raise ValueError(f"{field_name} has invalid date format -> {entered_value}")
+                
                 today = datetime.today().date()
                 
                 error_msg = None
                 
                 # Validation based on specific modes
                 if Date_range == "future":
-                    if entered_date < today:
+                    if entered_date > today:
                         pass
                     else:
                         error_msg = f"{field_name} must be a FUTURE date -> {entered_value}"
                 
                 if Date_range == "past":
-                    if entered_date > today:
+                    if entered_date < today:
                         pass
                     else:
                         error_msg = f"{field_name} must be a PAST date -> {entered_value}"
                 
                 if Date_range in ["current", "today"]:
-                    if entered_date != today:
+                    if entered_date == today:
                         pass
                     else:
                         error_msg = f"{field_name} must be TODAY'S date -> {entered_value}"
                         
                 if Date_range == "future_or_current":
-                    if entered_date <= today:
+                    if entered_date >= today:
                         pass
                     else:
                         error_msg = f"{field_name} must be TODAY or FUTURE date -> {entered_value}"
                         
                 if Date_range == "past_or_current":
-                    if entered_date >= today:
+                    if entered_date <= today:
                         pass
                     else:
-                        error_msg = f"{field_name} must be TODAY or PAST date -> {entered_value}"                
+                        error_msg = f"{field_name} must be TODAY or PAST date -> {entered_value}"
                 if error_msg:
                     raise ValueError(error_msg)
             except Exception as e:
@@ -252,7 +276,7 @@ class Function_Call(unittest.TestCase):
             return "Fail",msg
         else:
             print(f"'{entered_value}' → Accepted {field_name} ✅")
-        return "Pass"
+        return True
     
     def fill_input2(self,xpath, value, clear=True):
         wait = self.wait

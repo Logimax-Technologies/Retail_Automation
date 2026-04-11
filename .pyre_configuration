@@ -1,0 +1,8 @@
+{
+  "source_directories": [
+    "Sparqla"
+  ],
+  "exclude": [
+    ".*\\.venv/.*"
+  ]
+}

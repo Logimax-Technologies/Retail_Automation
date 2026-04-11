@@ -55,15 +55,71 @@ class ESTIMATION_NonTag(unittest.TestCase):
                     "Rate":13, 
                     "MC Type":14, 
                     "MC Value":15,
-                    "Wastage%":16,
+                    "Wastage%":16, # Note: Sheet has 'Wastage% '
                     "Charge":17,
                     "Field_validation_status":18,
                 }
                 row_data = {
                     key: sheet.cell(row=row_num, column=col).value
-                    for key, col in data.items()
+                    for key, (col) in data.items()
                 }
                 print(row_data)               
+                # [NEW] Prioritized Inventory Lookup
+                sec = str(row_data["Section"] or "")
+                prod = str(row_data["Product"] or "")
+                des = str(row_data["Design"] or "")
+                sub = str(row_data["Sub Design"] or "")
+                needed_pcs = int(row_data["Pcs"] or 1)
+                
+
+                src_sheet, src_row, tot_pcs, tot_purity, tot_gwt, tot_Mctype, tot_McValue, tot_Wastage, othercharge = ESTIMATION_NonTag._find_nontag_source(sec, prod, des, sub)
+                
+                if src_sheet:
+                    # Calculate proportional weight
+                    weight_per_pc = tot_gwt / tot_pcs
+                    Wastage = tot_Wastage +2
+                    if tot_Mctype == 'Per Piece':
+                        MC_Type = 'Piece'
+                    else:
+                        MC_Type = 'Gram'
+                    print(Wastage)
+
+                    taken_weight = round(weight_per_pc * needed_pcs, 3)
+                    
+                    print(f"🔍 Found inventory in {src_sheet} row {src_row}. Calculating weight for {needed_pcs} pcs: {taken_weight}")
+                    
+                    # Update NonTag_Est sheet immediately
+                    sheet.cell(row=row_num, column=9, value=tot_purity)
+                    sheet.cell(row=row_num, column=11, value=needed_pcs)
+                    sheet.cell(row=row_num, column=12, value=taken_weight)
+                    sheet.cell(row=row_num, column=14, value=MC_Type)
+                    sheet.cell(row=row_num, column=15, value=tot_McValue)
+                    sheet.cell(row=row_num, column=16, value=Wastage)
+                    sheet.cell(row=row_num, column=17, value=othercharge)
+                    workbook.save(FILE_PATH)
+                    
+                    # [FIX] Update row_data so 'create' method uses the latest values
+                    row_data["Purity"] = tot_purity
+                    row_data["Pcs"] = needed_pcs
+                    row_data["G.Wt"] = taken_weight
+                    row_data["MC Type"] = MC_Type
+                    row_data["MC Value"] = tot_McValue
+                    row_data["Wastage%"] = Wastage
+                    row_data["Charge"] = othercharge
+                    
+                    # Store track of taken inventory
+                    if not hasattr(self, 'nontag_found_rows'):
+                        self.nontag_found_rows = []
+                    self.nontag_found_rows.append((src_sheet, src_row, needed_pcs, taken_weight))
+                    
+                    # Use the calculated weight for estimation
+                    row_data["G.Wt"] = taken_weight
+                else:
+                    msg = "❌ Faill stock i completed add stock"
+                    print(msg)
+                    ESTIMATION_NonTag.update_excel_status(self, row_num, "Fail", msg, Sheet_name)
+                    break
+
                 # Call your 'create' method
                 Create_data = ESTIMATION_NonTag.create(self,row_data, row_num, Sheet_name, row,Board_Rate)
                 print(Create_data)
@@ -73,8 +129,8 @@ class ESTIMATION_NonTag(unittest.TestCase):
                     ceil_value,Test_Status,Actual_Status= Create_data
                     ESTIMATION_NonTag.update_excel_status(self,row_num, Test_Status, Actual_Status, Sheet_name)
                     salevalue = salevalue + float(ceil_value)
-                   
-        return salevalue            
+                    row = row+1 # Increment for next item in web table
+        return salevalue, getattr(self, 'nontag_found_rows', [])
                 # Remove processed customer from the list
                 
     def create(self,row_data, row_num, Sheet_name, row,Board_Rate):
@@ -175,8 +231,7 @@ class ESTIMATION_NonTag(unittest.TestCase):
             row_num=row_num,
             Sheet_name=Sheet_name
             )
-            Error_field_val.extend(errors)
-            print(Error_field_val)
+            
         else:
             msg = f"'{None}' → Pcs field is mandatory ⚠️"
             Mandatory_field.append("Pcs"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)       
@@ -192,8 +247,7 @@ class ESTIMATION_NonTag(unittest.TestCase):
             row_num=row_num,
             Sheet_name=Sheet_name
             )
-            Error_field_val.extend(errors)
-            print(Error_field_val)
+            
         else:
             msg = f"'{None}' → G.Wt field is mandatory ⚠️"
             Mandatory_field.append("G.Wt"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
@@ -211,8 +265,7 @@ class ESTIMATION_NonTag(unittest.TestCase):
             screenshot_prefix="MC Value",
             row_num=row_num,
             Sheet_name=Sheet_name)
-            Error_field_val.extend(errors)
-            print(Error_field_val)
+            
         else:
             msg = f"'{None}' → MC Value field is mandatory ⚠️"
             Mandatory_field.append("MC Value"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)        
@@ -220,7 +273,7 @@ class ESTIMATION_NonTag(unittest.TestCase):
         if row_data["Wastage%"]:
             errors=Function_Call.fill_input(    
             self,wait,
-            locator=(By.XPATH, f'(//input[@name="est_catalog[mc][]"])[{row}]'),
+            locator=(By.XPATH, f'(//input[@name="est_catalog[wastage][]"])[{row}]'),
             value=row_data["Wastage%"],
             pattern = r"^\d{1,2}(\.\d{1,2})?$",
             field_name="Wastage%",
@@ -228,19 +281,19 @@ class ESTIMATION_NonTag(unittest.TestCase):
             range_check = lambda v: 0 <= float(v) <= 99,
             row_num=row_num,
             Sheet_name=Sheet_name)
-            Error_field_val.extend(errors)
-            print(Error_field_val)
+            
         else:
             msg = f"'{None}' → Wastage% Value field is mandatory ⚠️"
             Mandatory_field.append("Wastage%"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)        
         
         # Open Other Charge section
-        Function_Call.click(self, f"(//table[@id='estimation_catalog_details']//td[18]/a)[{row}]")
+        Function_Call.click(self, f"(//table[@id='estimation_catalog_details']//td[21]/a)[{row}]")
 
         charges_raw = row_data["Charge"]
         if not charges_raw:
-            print("⚠️ OtherCharge flag is Yes but no ChargeName provided")
-            return
+            msg = "⚠️ OtherCharge flag is Yes but no ChargeName provided"
+            print(msg)
+            return "0.00", "Fail", msg
         charges_list = [s.strip() for s in charges_raw.split(",")]
 
         for idx, charge in enumerate(charges_list):
@@ -304,12 +357,20 @@ class ESTIMATION_NonTag(unittest.TestCase):
         print(purity)
         
         
-        if purity =='916.000':
-           gold_rate=Board_Rate[0]
-        if purity == '75.0000':
-           gold_rate=Board_Rate[1]
-        if purity == '92.5000':
-            gold_rate=Board_Rate[2]
+        gold_rate = 0
+        try:
+            purity_val = float(purity)
+            if purity_val == 91.60:
+                gold_rate = Board_Rate[0]
+            elif purity_val == 75.0:
+                gold_rate = Board_Rate[1]
+            elif purity_val == 92.5:
+                gold_rate = Board_Rate[2]
+            else:
+                print(f"⚠️ Unknown purity value: {purity_val}. Using rate 0.")
+        except (ValueError, TypeError):
+            print(f"❌ Could not convert purity '{purity}' to float.")
+
         
         
         
@@ -344,7 +405,10 @@ class ESTIMATION_NonTag(unittest.TestCase):
             "4": "Fixed Rate based on Weight"
         }
         Cal_type = data[str(Cal_current_value)]   # convert int → str because keys are strings
-        print(Cal_type)        
+        print(f"\n{'='*20}")
+        print(f"📊 CALCULATION TYPE: {Cal_type}")
+        print(f"{'='*20}\n")
+
         gross_weight=Gwt
         net_weight = Nwt  
         wastage_percentage = Wast_per 
@@ -353,13 +417,17 @@ class ESTIMATION_NonTag(unittest.TestCase):
         Charge_Amt = other_Amt
         Tax = float(Taxvalue)       
         # initialize
-        ceil_value = None
+        ceil_value = "0.00"
+        IGst = "0.00"
+        SGst = "0.00"
         
         if Cal_type=="Mc on Gross, Wast On Net":
         # calculation making cost on gross Wastage% on Net  
-            
-            Mc=Making_cost_pergram*gross_weight
-            mc=float('{:.2f}'.format(math.ceil(Mc)))
+            if Mc_type == 'Piece':
+                mc =Making_cost_pergram
+            else:    
+                Mc=Making_cost_pergram*gross_weight
+                mc=float('{:.2f}'.format(math.ceil(Mc)))
             Va = (wastage_percentage/100)*net_weight
             Va = round(Va, 3)
             total = net_weight+Va
@@ -459,6 +527,64 @@ class ESTIMATION_NonTag(unittest.TestCase):
         # Print and return status
         print(Status)
         return Status
+
+    @staticmethod
+    def _find_nontag_source(sec, product, design, sub_design):
+        """
+        Look for available inventory in NonTag_Detail or Purchase_NonTagDetail.
+        """
+        sheets_to_check = ["NonTag_Detail", "Purchase_NonTagDetail"]
+        workbook = load_workbook(FILE_PATH)
+        
+        for sheet_name in sheets_to_check:
+            if sheet_name not in workbook.sheetnames:
+                continue
+            sheet = workbook[sheet_name]
+            # Mapping based on Lot.py updates: 3:Product, 4:Design, 5:SubDesign, 7:Pcs, 8:G.Wt
+            # Inventory tracking in Col 15 (Taken Pcs) and Col 16 (Taken Weight)
+            for r in range(2, sheet.max_row + 1):
+                s_sec = str(sheet.cell(row=r, column=2).value or "").strip()
+                s_prod = str(sheet.cell(row=r, column=3).value or "").strip()
+                s_des = str(sheet.cell(row=r, column=4).value or "").strip()
+                s_sub = str(sheet.cell(row=r, column=5).value or "").strip()
+                
+                if s_sec.lower() == sec.lower() and \
+                   s_prod.lower() == product.lower() and \
+                   s_des.lower() == design.lower() and \
+                   s_sub.lower() == sub_design.lower():
+                    
+                    total_purity = float(sheet.cell(row=r, column=6).value or 0)
+                    total_pcs = int(sheet.cell(row=r, column=7).value or 0)
+                    total_gwt = float(sheet.cell(row=r, column=8).value or 0)
+                    total_Mctype = str(sheet.cell(row=r, column=9).value or '')
+                    total_McValue = float(sheet.cell(row=r, column=10).value or 0)
+                    total_Wastage = float(sheet.cell(row=r, column=11).value or 0)
+                    othercharge = str(sheet.cell(row=r, column=12).value or '')
+                    taken_pcs = float(sheet.cell(row=r, column=14).value or 0)
+                    
+                    if total_pcs > 0 and taken_pcs < total_pcs:
+                        return sheet_name, r, total_pcs, total_purity, total_gwt, total_Mctype, total_McValue, total_Wastage, othercharge
+        return None, None, None, None, None, None, None, None, None
+
+    @staticmethod
+    def update_source_inventory(found_rows):
+        """
+        Increments the 'Taken' PCS and Weight in the source sheets.
+        found_rows: list of (sheet_name, row_idx, taken_pcs, taken_weight)
+        """
+        try:
+            workbook = load_workbook(FILE_PATH)
+            for sheet_name, r, t_pcs, t_gwt in found_rows:
+                sheet = workbook[sheet_name]
+                curr_pcs = float(sheet.cell(row=r, column=14).value or 0)
+                curr_gwt = float(sheet.cell(row=r, column=15).value or 0)
+                
+                sheet.cell(row=r, column=14, value=curr_pcs + t_pcs)
+                sheet.cell(row=r, column=15, value=curr_gwt + t_gwt)
+                print(f"✅ Updated {sheet_name} inventory at row {r}: +{t_pcs} pcs, +{t_gwt} weight")
+            workbook.save(FILE_PATH)
+        except Exception as e:
+            print(f"❌ Error updating source inventory: {e}")
 
 
 

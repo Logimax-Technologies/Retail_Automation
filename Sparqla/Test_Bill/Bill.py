@@ -17,12 +17,16 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from datetime import datetime
 import unittest
+import random
+import string
 
 FILE_PATH = ExcelUtils.file_path 
 class Billing(unittest.TestCase):
     def __init__(self, driver):
         self.driver = driver   
         self.wait = WebDriverWait(driver, 30)
+
+    
 
     def test_Billing(self):
         """Main test entry point for Billing automation."""
@@ -233,6 +237,21 @@ class Billing(unittest.TestCase):
         except:
             pass
 
+        # Check for PAN mandatory threshold (2 Lakh)
+        total_val = row_data.get("Total")
+        if total_val:
+            try:
+                # Normalize total value
+                val = float(str(total_val).replace(',', '').strip())
+                if val >= 200000:
+                    pan = self._generate_pan()
+                    print(f"Total Amount {val} is >= 2 Lakh, Entering Random PAN: {pan}")
+                    Function_Call.fill_input(self, self.wait, (By.ID, "pan_no"), pan, field_name="PAN NO", screenshot_prefix="PAN", row_num=row_num, Sheet_name=sheet_name)
+                else:
+                    print("Total Amount value is less than 2 Lakh")
+            except Exception as e:
+                print(f"Error checking Total for PAN: {e}")  
+
         received_str = Function_Call.get_value(self, '//input[@name="billing[tot_amt_received]"]')
         received_value = float(received_str or 0)
         cash_val = float(row_data.get("Cash") or 0)
@@ -280,8 +299,29 @@ class Billing(unittest.TestCase):
                 screenshot_prefix="Cash", row_num=row_num, Sheet_name=sheet_name
             )
 
+        # Track amounts for summary
+        amounts = {"Cash": cash_val, "Card": 0, "Cheque": 0, "NetBanking": 0, "Adjustable": adjustable_amount}
+        
         # Process Other Methods
         test_case_id = row_data.get('Test Case Id')
+        
+        # Prepare sub-amounts based on sub-sheet logic
+        if row_data.get('Creditcard') == 'Yes':
+            pct = self._get_sub_label("Credit_Card", test_case_id, 6) # Col 6 is Amount%
+            amounts["Card"] = (pending_payment * float(pct or 0)) / 100
+            # Pull Type (CC/DC) from Col 3
+            amounts["CardName"] = self._get_sub_label("Credit_Card", test_case_id, 3) 
+
+        if row_data.get('Cheque') == 'Yes':
+            pct = self._get_sub_label("Cheque", test_case_id, 5)
+            amounts["Cheque"] = (pending_payment * float(pct or 0)) / 100
+
+        if row_data.get('NetBanking') == 'Yes':
+            pct = self._get_sub_label("NetBanking", test_case_id, 6) # Col 6 is Amount%
+            amounts["NetBanking"] = (pending_payment * float(pct or 0)) / 100
+            # Pull Type (RTGS/IMPS/etc) from Col 2
+            amounts["NBName"] = self._get_sub_label("NetBanking", test_case_id, 2)
+
         payment_methods = {
             'Creditcard': CreditCard.test_Credit_Card,
             'Cheque': Cheque.test_Cheque,
@@ -294,3 +334,127 @@ class Billing(unittest.TestCase):
         balance=Function_Call.get_text(self, '//table[@id="payment_modes"]//tfoot//tr[2]//th[3]')
         print(f"Balance: {balance}")
         
+        # Click submit and handle the process
+        original_window = self.driver.current_window_handle
+        Function_Call.click(self, '//button[@id="pay_submit"]')
+        
+        captured_id = ""
+        try:
+            # Wait for new tab and switch
+            WebDriverWait(self.driver, 10).until(EC.number_of_windows_to_be(2))
+            for window_handle in self.driver.window_handles:
+                if window_handle != original_window:
+                    self.driver.switch_to.window(window_handle)
+                    # Extract ID from URL (e.g. .../billing_invoice/3072)
+                    sleep(2) # Give it 0.5s to load URL content
+                    captured_id = self.driver.current_url.split('/')[-1]
+                    self.driver.close()
+                    break
+        except Exception as e:
+            print(f"Could not extract Bill ID: {e}")
+        finally:
+            self.driver.switch_to.window(original_window)
+
+        # Verify success message and update status
+        try:
+            msg_el = self.wait.until(EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'alert-success')]")))
+            if "successfully" in msg_el.text.lower():
+                 self._update_excel_status(row_num, "Pass", "Success", sheet_name, captured_id)
+                 # Update Bill Details Summary
+                 self._update_bill_summary(row_data, captured_id, amounts)
+            else:
+                 self._update_excel_status(row_num, "Fail", f"Message: {msg_el.text}", sheet_name)
+        except:
+             self._update_excel_status(row_num, "Fail", "Success message not found", sheet_name)
+  
+    def _generate_pan(self):
+        """Generates a random PAN number in standard format [A-Z]{5}[0-9]{4}[A-Z]{1}"""
+        return ''.join(random.choices(string.ascii_uppercase, k=5)) + \
+               ''.join(random.choices(string.digits, k=4)) + \
+               ''.join(random.choices(string.ascii_uppercase, k=1))
+
+    def _update_excel_status(self, row_num, test_status, actual_status, sheet_name, bill_no=None):
+        """Updates test results and bill number in the Excel sheet."""
+        try:
+            wb = load_workbook(FILE_PATH)
+            sh = wb[sheet_name]
+            color = "00B050" if test_status == "Pass" else "FF0000"
+            sh.cell(row=row_num, column=2, value=test_status).font = Font(bold=True, color=color)
+            sh.cell(row=row_num, column=3, value=actual_status).font = Font(bold=True, color=color)
+            if bill_no:
+                # Based on data_map, BillNo is column 28
+                sh.cell(row=row_num, column=28, value=bill_no)
+            wb.save(FILE_PATH)
+            wb.close()
+            print(f"✅ Excel Updated: Row {row_num}, Status={test_status}, BillNo={bill_no}")
+        except Exception as e:
+            print(f"❌ Failed to update Excel: {e}")
+
+    def _update_bill_summary(self, row_data, invoice_no, amounts):
+        """Populates the 'Bill details' sheet with transaction summary."""
+        try:
+            wb = load_workbook(FILE_PATH)
+            sn = "Bill details"
+            if sn not in wb.sheetnames:
+                sh = wb.create_sheet(sn)
+                # Updated 13-column header structure
+                headers = ["Bill Type", "InvoiceNo", "Cash", "Carddetails", "Amount", "Cheque", "Amount", "Net Banking", "Amount", "Bill Amount", "Creidt Amount", "Credit Due Date", "Credit Balance Amt"]
+                for i, h in enumerate(headers, 1):
+                    sh.cell(row=1, column=i, value=h).font = Font(bold=True)
+            else:
+                sh = wb[sn]
+
+            # Find next empty row
+            row = 2
+            while sh.cell(row=row, column=2).value is not None:
+                row += 1
+
+            sh.cell(row=row, column=1, value=row_data.get("Bill Type"))
+            sh.cell(row=row, column=2, value=invoice_no)
+            sh.cell(row=row, column=3, value=amounts.get("Cash", 0)) # Cash (Col 3)
+
+            # Card (Col 4, 5)
+            if amounts.get("Card", 0) > 0:
+                sh.cell(row=row, column=4, value=amounts.get("CardName", "CC"))
+                sh.cell(row=row, column=5, value=amounts["Card"])
+            
+            # Cheque (Col 6, 7)
+            if amounts.get("Cheque", 0) > 0:
+                sh.cell(row=row, column=6, value="Cheque")
+                sh.cell(row=row, column=7, value=amounts["Cheque"])
+
+            # Net Banking (Col 8, 9)
+            if amounts.get("NetBanking", 0) > 0:
+                sh.cell(row=row, column=8, value=amounts.get("NBName", "NetBanking"))
+                sh.cell(row=row, column=9, value=amounts["NetBanking"])
+
+            collected = amounts.get("Card", 0) + amounts.get("Cheque", 0) + amounts.get("NetBanking", 0) + amounts.get("Cash", 0)
+            total_raw = str(row_data.get("Total", 0)).replace(',', '').strip()
+            total = float(total_raw) if total_raw else 0
+            
+            # Calculations
+            sh.cell(row=row, column=10, value=collected) # Bill Amount
+            sh.cell(row=row, column=11, value=max(0, total - collected)) # Creidt Amount
+            sh.cell(row=row, column=12, value=row_data.get("Credit Due Date"))
+            
+            # Credit Balance Amt (Col 13)
+            if row_data.get("Is Credit") == "Yes":
+                # Use the actual adjustable_amount (received_val) passed from _handle_payments
+                actual_received = amounts.get("Adjustable", 0)
+                sh.cell(row=row, column=13, value=total - actual_received)
+
+            wb.save(FILE_PATH)
+            wb.close()
+            print(f"✅ Bill Details Updated: Invoice {invoice_no}")
+        except Exception as e:
+            print(f"❌ Failed Bill Details update: {e}")
+
+    def _get_sub_label(self, sheet_name, test_case_id, col):
+        """Helper to read detail label from sub-sheets."""
+        try:
+            wb = load_workbook(FILE_PATH); sh = wb[sheet_name]
+            for r in range(2, sh.max_row + 1):
+                if str(sh.cell(row=r, column=1).value) == str(test_case_id):
+                    return sh.cell(row=r, column=col).value
+        except: return None
+        return None

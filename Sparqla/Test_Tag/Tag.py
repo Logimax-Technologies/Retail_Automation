@@ -26,7 +26,7 @@ class Tag(unittest.TestCase):
         self.driver =driver 
         self.wait = WebDriverWait(driver, 30) 
         
-    def test_tag(self):
+    def test_tag(self,Sheet_name=None):
         driver = self.driver
         wait = self.wait
         
@@ -45,11 +45,14 @@ class Tag(unittest.TestCase):
         print(gold_rate18KT)  
         Silver_rate = int(float(rate_text3.replace("INR", "").strip()))
         print(Silver_rate)  
-        function_name = "Tag"
+        function_name = Sheet_name
         valid_rows = ExcelUtils.get_valid_rows(FILE_PATH, function_name)
         workbook = load_workbook(FILE_PATH)
         sheet = workbook[function_name]
         PCS_Count = 0
+        previous_branch = None
+        Current_Lot = None
+        current_branch = None
         for row_num in range(2, valid_rows):
                 # Define columns and dynamically fetch their values
             data = {
@@ -84,6 +87,12 @@ class Tag(unittest.TestCase):
             row_data = {key: sheet.cell(row=row_num, column=col).value 
                         for key, col in data.items()}
             print(row_data)
+
+            print(f"\n{'='*80}")
+            print(f"🧪 Running Test Case: {row_data['Test Case Id']}")
+            print(f"{'='*80}")
+            
+            current_branch = row_data["Branch"]
             if row_num!=2:
                 row_no=row_num-1
                 before_Lot = sheet.cell(row=row_no, column=5).value
@@ -96,40 +105,61 @@ class Tag(unittest.TestCase):
             Current_Product=row_data["Product"]
     
             if  Current_Lot != before_Lot :
-                if row_num !=2:
-                   driver.execute_script("window.scrollBy(0, -600);")
-                wait.until(EC.element_to_be_clickable((By.ID,"select2-branch_select-container"))).click()
-                Branch=wait.until(EC.visibility_of_element_located((By.XPATH,"//input[@type='search']")))
-                Branch.clear()
-                Branch.send_keys(row_data["Branch"],Keys.ENTER)
-                sleep(5)
+                if row_num != 2:
+                    # New lot detected, update BranchTransfer for the PREVIOUS lot
+                    self.update_branch_transfer(before_Lot, previous_branch)
+                    driver.execute_script("window.scrollBy(0, -600);")
+                
+                if row_data.get("Branch"):
+                    wait.until(EC.element_to_be_clickable((By.ID,"select2-branch_select-container"))).click()
+                    Branch=wait.until(EC.visibility_of_element_located((By.XPATH,"//input[@type='search']")))
+                    Branch.clear()
+                    Branch.send_keys(row_data["Branch"],Keys.ENTER)
+                    sleep(5)
+                else:
+                    print(f"ℹ️ Skipping branch selection for row {row_num}")
+                
                 wait.until(EC.element_to_be_clickable((By.ID,"select2-tag_lot_received_id-container"))).click()
                 Lot_No=wait.until(EC.visibility_of_element_located((By.XPATH,"//input[@type='search']")))
                 Lot_No.clear()
-                Lot_No.send_keys(row_data["Lot No"])
+                Lot_No.send_keys(str(row_data["Lot No"]))
                 Lot_NO=row_data["Lot No"]
                 LOT = wait.until(EC.element_to_be_clickable((By.XPATH, f"//li[normalize-space()='{Lot_NO}']")))
                 LOT.click()
                 print(Lot_No)
+                previous_branch = row_data["Branch"]
                 sleep(2)
             if  Current_Product !=  before_Product: 
                 if row_num !=2:
                    driver.execute_script("window.scrollBy(0, -600);")
                 wait.until(EC.element_to_be_clickable((By.ID, "select2-tag_lt_prod-container"))).click()
                 Product=wait.until(EC.visibility_of_element_located((By.XPATH,"//input[@type='search']")))
-                Product.send_keys(row_data["Product"],Keys.ENTER)
-                sleep(2) 
-                wait.until(EC.element_to_be_clickable((By.ID,"select2-section_select-container"))).click()
-                Section=wait.until(EC.visibility_of_element_located((By.XPATH,"//input[@type='search']")))
-                Section.clear()
-                Section.send_keys(row_data["Section"],Keys.ENTER)
+                Product.send_keys(row_data["Product"])
+                Product.send_keys(Keys.ENTER)
+                try:
+                    Function_Call.alert(self)
+                    Product.send_keys(Keys.ENTER)
+                except:
+                    pass
+                if row_data.get("Section"):
+                    wait.until(EC.element_to_be_clickable((By.ID,"select2-section_select-container"))).click()
+                    Section=wait.until(EC.visibility_of_element_located((By.XPATH,"//input[@type='search']")))
+                    Section.clear()
+                    Section.send_keys(row_data["Section"],Keys.ENTER)
+                else:
+                    print(f"ℹ️ Skipping section selection for row {row_num}")
                 
                 TestCaseId=row_data["Test Case Id"]
                 row_Lotdata=Lot.Lotdetails(self,TestCaseId)
                 print (row_Lotdata)
-                Pcs= row_Lotdata["Pcs"]
-                GWT = row_Lotdata["GWT"]
-                DWT = row_Lotdata["LWt"]
+                
+                if row_Lotdata:
+                    Pcs = row_Lotdata.get("Pcs", 0)
+                    GWT = row_Lotdata.get("GWT", 0)
+                    DWT = row_Lotdata.get("LWt", "NO")
+                else:
+                    Pcs, GWT, DWT = 0, 0, "NO"
+                    print("⚠️ Lot details not found for TestCaseId:", TestCaseId)
                 if DWT.upper()=="NO":
                     DWT=0
                     
@@ -170,18 +200,33 @@ class Tag(unittest.TestCase):
                 
             else:
                 print(f'{row_num} Row Tag runing') 
-            if row_num !=2:
-                driver.execute_script("window.scrollBy(0, -600);")        
+            try:   
+                Function_Call.alert(self)
+            except:   
+                pass   
+            if row_num != 2:
+                driver.execute_script("window.scrollBy(0, -600);") 
+            
+            # Wait for any blocking overlays (loading spinners/banners) to disappear
+            try:
+                wait.until(EC.invisibility_of_element_located((By.CLASS_NAME, "overlay")))
+            except:
+                pass # Continue if no overlay or timeout occurs
 
-            wait.until(EC.element_to_be_clickable((By.ID,"select2-des_select-container"))).click()
+            # Use Javascript click for select2 container as it is more robust against intercepted clicks
+            design_dropdown = wait.until(EC.element_to_be_clickable((By.ID, "select2-des_select-container")))
+            try:
+                design_dropdown.click()
+            except:
+                driver.execute_script("arguments[0].click();", design_dropdown)
             Design=wait.until(EC.visibility_of_element_located((By.XPATH,"//input[@type='search']")))
             Design.clear()
-            Design.send_keys(row_data["Design"],Keys.ENTER)
+            Design.send_keys(str(row_data.get("Design") or ""),Keys.ENTER)
         
             wait.until(EC.element_to_be_clickable((By.ID, "select2-sub_des_select-container"))).click()
             Sub_Design=wait.until(EC.visibility_of_element_located((By.XPATH,"//input[@type='search']")))
             Sub_Design.clear() 
-            Sub_Design.send_keys(row_data["Sub Design"],Keys.ENTER)
+            Sub_Design.send_keys(str(row_data.get("Sub Design") or ""),Keys.ENTER)
             
             Pieces=wait.until(EC.visibility_of_element_located((By.ID,"tag_pcs")))
             Pieces.clear()
@@ -259,17 +304,21 @@ class Tag(unittest.TestCase):
                 
                
 
-                metal_text = wait.until(
-                    EC.presence_of_element_located((By.XPATH, "//*[@id='lt_metal']"))
-                ).text
+            metal_text = wait.until(
+                EC.presence_of_element_located((By.XPATH, "//*[@id='lt_metal']"))
+            ).text
 
-                print("Metal:", metal_text)
-            if metal_text=='GOLD - 75.0000':
+            Board_rate = 0
+            print("Metal:", metal_text)
+            if '75.0000' in metal_text:
                 Board_rate=gold_rate18KT
-            if metal_text=='GOLD - 916.0000':
+            elif '916.0000' in metal_text or '91.6000' in metal_text:
                 Board_rate=gold_rate22KT
-            if metal_text=='Silver - 92.5000':
+            elif '92.5000' in metal_text:
                 Board_rate=Silver_rate
+            else:
+                print(f"⚠️ Unrecognized metal type: {metal_text}. Using default rate.")
+                Board_rate = gold_rate22KT # Default fallback
                     
                 
             value = Tag.calculation(self,row_data,CalculationType,TotalAmount,Wt_gram,OtherMetalAmount,Board_rate)
@@ -282,10 +331,10 @@ class Tag(unittest.TestCase):
             if HUID1 != None:
                 wait.until(EC.element_to_be_clickable((By.ID,"tag_huid"))).click()
                 wait.until(EC.visibility_of_element_located((By.ID,"tag_huid"))).send_keys(row_data["HUID1"])
-            HUID2=(row_data["HUID2"])
+            HUID2=(row_data.get("HUID2"))
             if HUID2 != None:
                 wait.until(EC.element_to_be_clickable((By.ID,"tag_huid2"))).click()
-                wait.until(EC.visibility_of_element_located((By.ID,"tag_huid2"))).send_keys(row_data["HUID1"])
+                wait.until(EC.visibility_of_element_located((By.ID,"tag_huid2"))).send_keys(row_data["HUID2"])
             else:
                 print('done')
             Attribute = row_data["Attribute Name"]   
@@ -300,17 +349,23 @@ class Tag(unittest.TestCase):
                 wait.until(EC.element_to_be_clickable((By.XPATH,"//span[text()='Select Attribute Value']"))).click()
                 Value=wait.until(EC.visibility_of_element_located((By.XPATH,"//input[@type='search']")))
                 Value.clear()
-                Value.send_keys(row_data["Value"],Keys.ENTER)
+                Value.send_keys(str(row_data.get("Attribute", "")),Keys.ENTER)
                 
                 wait.until(EC.element_to_be_clickable((By.ID,"update_attribute_details"))).click()
             else:
                 print("There is no Attribute")
+                
+            if row_data["Rate / MRP"] != None:
+                wait.until(EC.element_to_be_clickable((By.ID,"tag_sell_rate"))).click()
+                wait.until(EC.visibility_of_element_located((By.ID,"tag_sell_rate"))).send_keys(row_data["Rate / MRP"])
+            else:
+                print("There is no Rate / MRP")    
             if row_data["Certification"] == "Yes":
                 wait.until(EC.element_to_be_clickable((By.ID,"cert_no"))).click()
                 wait.until(EC.visibility_of_element_located((By.ID,"cert_no"))).send_keys(row_data["Certification No"])
         
                 wait.until(EC.element_to_be_clickable((By.ID,"cert_img"))).click()
-                wait.until(EC.element_to_be_clickable((By.ID,"cert_img"))).send_keys(row_data["Certification Image"])
+                wait.until(EC.visibility_of_element_located((By.ID,"cert_img"))).send_keys(row_data["Certification Image"])
             
             else:
                 print('There is no Certification')
@@ -324,17 +379,28 @@ class Tag(unittest.TestCase):
             Button=row_data["Button"]  
             print(Button)  
             if Button == "Add":
-                Input_Pcs=row_data["Pieces"]
-                Input_Pcs=int(Input_Pcs)
-                print(type(PCS_Count))
-                PCS_Count=PCS_Count-Input_Pcs
-                if PCS_Count==1:
-                   wait.until(EC.element_to_be_clickable((By.ID,"addTagToPreview"))).click()
-                   sleep(3)
-                   Function_Call.alert(self)  
+                Input_Pcs=row_data.get("Pieces", 0)
+                if Input_Pcs:
+                    PCS_Count=PCS_Count-int(Input_Pcs)
                 wait.until(EC.element_to_be_clickable((By.ID,"addTagToPreview"))).click()
+                sleep(2)
+                # --- Specific Alert Handling for Tagging ---
+                try:
+                    alert = WebDriverWait(driver, 5).until(EC.alert_is_present())
+                    print("🔔 Found Alert:", alert.text)
+                    alert.accept()
+                    sleep(1)
+                except:
+                    print("ℹ️ No alert appeared after Add")
             else:
                 wait.until(EC.element_to_be_clickable((By.ID,"addTagToPreviewAndCopy"))).click() 
+                sleep(2)
+                try:
+                    alert = WebDriverWait(driver, 5).until(EC.alert_is_present())
+                    print("🔔 Found Alert (Copy):", alert.text)
+                    alert.accept()
+                except:
+                    pass
             Test_Status = 'Pass'
             Actual_Status="Tagged successfully"
             sheet.cell(row=row_num, column=2).value = Test_Status
@@ -343,13 +409,21 @@ class Tag(unittest.TestCase):
             Status = ExcelUtils.get_Status(FILE_PATH,function_name)  
             print(Status)
             Update_master = ExcelUtils.update_master_status(FILE_PATH,Status,function_name)  
-        Tag.update_Tagdetails(self,row_num)
+        
+        # After loop, update the final Lot in BranchTransfer sheet
+        if row_num >= 2:
+            self.update_branch_transfer(Current_Lot, row_data["Branch"])
+            
+        Tag.update_Tagdetails(self,row_num,function_name)
                 # driver.find_element(By.XPATH,"(.//*[normalize-space(text()) and normalize-space(.)='Booking Master'])[1]/following::div[3]").click()
     
     
-    def update_Tagdetails(self,row_num):
+    def update_Tagdetails(self,row_num,function_name):
         wait = self.wait
-        sheet_name = "Tag_EST"
+        if function_name == 'Tag':
+           sheet_name = "Tag_Detail"
+        else:
+            sheet_name ="Purchase_TagDetail"
         workbook = load_workbook(FILE_PATH)
         sheet = workbook[sheet_name]
 
@@ -370,14 +444,27 @@ class Tag(unittest.TestCase):
         columns_indexes = [all_table_headers.index(col) for col in columns_to_keep]
         print('oooooo')
         print(columns_indexes)
-        # --- Write table headers to Excel (starting from column D) ---
+        # --- Initialize headers ---
+        sheet.cell(row=1, column=1, value="Test Case Id")
         for col_offset, header in enumerate(columns_to_keep):
-            sheet.cell(row=1, column=4 + col_offset, value=header)
+            sheet.cell(row=1, column=2 + col_offset, value=header)
         print('IIIIIIIIIII')
         print(col_offset)
+        
+        # Find the last used TC number to continue the sequence
+        last_tc_num = 0
+        for r in range(sheet.max_row, 1, -1):
+            val = sheet.cell(row=r, column=1).value
+            if val and str(val).startswith("TC"):
+                match = re.search(r'\d+', str(val))
+                if match:
+                    last_tc_num = int(match.group())
+                    break
+        
+        next_tc_num = last_tc_num + 1
         # Loop through each web table row ONCE
-        row_idx = 2
-        # row_idx = sheet.max_row + 1
+        # Start from the first empty row instead of hardcoded row 2
+        row_idx = sheet.max_row + 1
         for table_row in table_rows:
             table_cells = table_row.find_elements(By.TAG_NAME, "td")
             row_values = [table_cells[i].text.strip() for i in columns_indexes]
@@ -386,20 +473,18 @@ class Tag(unittest.TestCase):
             row_values[2] = re.sub(r'-\d+$', '', row_values[2]).strip()
             print(row_values)
 
-            # Write row data to Excel
+            # Write Test Case Id to column 1
+            tc_id = f"TC{str(next_tc_num).zfill(3)}"
+            sheet.cell(row=row_idx, column=1, value=tc_id)
+            next_tc_num += 1
+
+            # Write row data to Excel (starting from column 2)
             for col_offset, value in enumerate(row_values):
-                sheet.cell(row=row_idx, column=4 + col_offset, value=value)
+                sheet.cell(row=row_idx, column=2 + col_offset, value=value)
             row_idx += 1  # move to next Excel row
 
         workbook.save(FILE_PATH)
         print("✅ Data merged successfully!")
-
-        
-    
-    
-    
-    
-    
     
     
     def calculation(self,row_data,CalculationType,TotalAmount,Wt_gram,OtherMetalAmount,Board_rate):
@@ -494,7 +579,7 @@ class Tag(unittest.TestCase):
         # if row_data["Calc Type"] == "Fixed Rate":
             # ceil_value   
           
-        if CalculationType=="Yes":
+        if float(OtherMetalAmount or 0) > 0:
            Total =float(ceil_value) + float(OtherMetalAmount)
            return Total
                         
@@ -527,6 +612,74 @@ class Tag(unittest.TestCase):
             return alert_text
         finally: self.accept_next_alert = True
     
+    
+    def update_branch_transfer(self, lot_no, branch):
+        """
+        Updates or appends a 'Tagged' row in the BranchTransfer sheet with the completed Lot Number.
+        """
+        try:
+            workbook = load_workbook(FILE_PATH)
+            if "BranchTransfer" not in workbook.sheetnames:
+                print("⚠️ BranchTransfer sheet not found")
+                return
+            
+            bt_sheet = workbook["BranchTransfer"]
+            target_row = None
+            last_tc_suffix = 0
+            
+            # Find last TC suffix and search for an available 'Tagged' row
+            for row in range(2, 500):
+                tc_id = bt_sheet.cell(row=row, column=1).value
+                if not tc_id:
+                    if target_row is None: target_row = row
+                    break
+                
+                # Track max TC ID suffix (e.g. TC_BT_01 -> 1)
+                if str(tc_id).startswith("TC_BT_"):
+                    try:
+                        match = re.search(r'\d+', str(tc_id))
+                        if match:
+                            suffix = int(match.group())
+                            if suffix > last_tc_suffix:
+                                last_tc_suffix = suffix
+                    except:
+                        pass
+                
+                # Use existing row if it is 'Tagged' but has no LotNo
+                t_type = str(bt_sheet.cell(row=row, column=4).value or "").strip()
+                l_no = bt_sheet.cell(row=row, column=8).value
+                if t_type == "Tagged" and (l_no is None or str(l_no).strip() == ""):
+                    target_row = row
+                    break
+
+            if target_row is None:
+                target_row = bt_sheet.max_row + 1
+
+            # Generate TC ID if row is new/empty
+            if not bt_sheet.cell(row=target_row, column=1).value:
+                next_id = f"TC_BT_{str(last_tc_suffix + 1).zfill(2)}"
+                bt_sheet.cell(row=target_row, column=1).value = next_id
+            
+            # Fill Tagged transfer details
+            bt_sheet.cell(row=target_row, column=4).value = "Tagged"
+            
+            # FromBranch defaults to HEAD OFFICE if not explicitly set in Tag sheet
+            if not branch:
+                branch = "HEAD OFFICE"
+            
+            bt_sheet.cell(row=target_row, column=5).value = branch
+            
+            # Inherit ToBranch from the previous row if current is empty
+            if not bt_sheet.cell(row=target_row, column=6).value and target_row > 2:
+                bt_sheet.cell(row=target_row, column=6).value = bt_sheet.cell(row=target_row-1, column=6).value
+            
+            bt_sheet.cell(row=target_row, column=8).value = lot_no
+            
+            workbook.save(FILE_PATH)
+            print(f"✅ BranchTransfer updated row {target_row} with Lot: {lot_no}")
+        except Exception as e:
+            print(f"❌ BranchTransfer update error: {str(e)}")
+
     def tearDown(self):
         self.driver.quit()
         self.assertEqual([], self.verificationErrors)

@@ -33,6 +33,7 @@ class ESTIMATION_Oldmetal(unittest.TestCase):
         sheet = workbook[Sheet_name]
         row=1
         print(row)
+        total_old_metal_amt = 0.0
         for row_num in range(2, valid_rows):
             current_id = sheet.cell(row=row_num, column=1).value  # Column 1 = Test Case Id
             if current_id == test_case_id:
@@ -48,7 +49,7 @@ class ESTIMATION_Oldmetal(unittest.TestCase):
                     "Pcs": 9,
                     "G_Wt": 10,
                     "Dust_Wt": 11,
-                    "Wastage%": 12,
+                    "Wastage%": 12, # Sheet has 'Wastage(%)'
                     "Rate": 13,
                     "Exchange Value%": 14,
                     "Stone": 15,
@@ -59,17 +60,18 @@ class ESTIMATION_Oldmetal(unittest.TestCase):
                 }
                 row_data = {
                     key: sheet.cell(row=row_num, column=col).value
-                    for key, col in data.items()
+                    for key, (col) in data.items()
                 }
                 print(row_data)
-                # Call your 'create' method
-                Create_data = ESTIMATION_Oldmetal.create(self,row_data, row_num, Sheet_name, row)
+                # Call 'create' and accumulate
+                Create_data = ESTIMATION_Oldmetal.create(self, row_data, row_num, Sheet_name, row)
                 print(Create_data)
-                row = row+1
                 if Create_data:
-                    Cal_Amt,Test_Status,Actual_Status= Create_data
-                    ESTIMATION_Oldmetal.update_excel_status(self,row_num, Test_Status, Actual_Status, Sheet_name)                
-        return Cal_Amt
+                    Cal_Amt, Test_Status, Actual_Status = Create_data
+                    ESTIMATION_Oldmetal.update_excel_status(self, row_num, Test_Status, Actual_Status, Sheet_name)
+                    total_old_metal_amt += float(Cal_Amt)
+                    row = row + 1
+        return total_old_metal_amt
                 
     def create(self,row_data, row_num, Sheet_name, row):
         wait = self.wait
