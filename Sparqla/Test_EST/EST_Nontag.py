@@ -567,24 +567,35 @@ class ESTIMATION_NonTag(unittest.TestCase):
         return None, None, None, None, None, None, None, None, None
 
     @staticmethod
-    def update_source_inventory(found_rows):
+    def update_source_inventory(found_rows,estimation_no):
         """
         Increments the 'Taken' PCS and Weight in the source sheets.
         found_rows: list of (sheet_name, row_idx, taken_pcs, taken_weight)
         """
+        from datetime import datetime
         try:
             workbook = load_workbook(FILE_PATH)
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entry = f"{estimation_no} - {timestamp}"
+            
+            # 1. Update Inventory Sheets
             for sheet_name, r, t_pcs, t_gwt in found_rows:
-                sheet = workbook[sheet_name]
-                curr_pcs = float(sheet.cell(row=r, column=14).value or 0)
-                curr_gwt = float(sheet.cell(row=r, column=15).value or 0)
-                
-                sheet.cell(row=r, column=14, value=curr_pcs + t_pcs)
-                sheet.cell(row=r, column=15, value=curr_gwt + t_gwt)
-                print(f"✅ Updated {sheet_name} inventory at row {r}: +{t_pcs} pcs, +{t_gwt} weight")
+                if sheet_name in workbook.sheetnames:
+                    sheet = workbook[sheet_name]
+                    curr_pcs = float(sheet.cell(row=r, column=14).value or 0)
+                    curr_gwt = float(sheet.cell(row=r, column=15).value or 0)
+                    
+                    sheet.cell(row=r, column=14, value=curr_pcs + t_pcs)
+                    sheet.cell(row=r, column=15, value=curr_gwt + t_gwt)
+                    # Update column 13 status in inventory sheet to "Estimated"
+                    sheet.cell(row=r, column=13, value="Estimated").font = Font(bold=True, color="00B050")
+                    # Update column 16 with Estimation No and Time
+                    sheet.cell(row=r, column=16, value=entry)
+                    print(f"✅ Updated {sheet_name} row {r}: +{t_pcs} Pcs, +{t_gwt} Weight with Est No: {estimation_no}")
+
             workbook.save(FILE_PATH)
         except Exception as e:
-            print(f"❌ Error updating source inventory: {e}")
+            print(f"❌ Error updating source inventory or EST sheet: {e}")
 
 
 

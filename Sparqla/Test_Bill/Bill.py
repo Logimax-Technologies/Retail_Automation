@@ -60,6 +60,11 @@ class Billing(unittest.TestCase):
                 "OrderNo": 31, "Amount": 32
             }
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
+            
+            if row_data.get("BillNo"):
+                print(f"Row {row_num}: Bill No {row_data['BillNo']} already generated successfully. skipping... ✅")
+                continue
+
             print(f"Starting test case: {row_data['Test Case Id']}")
             
             self.create(row_data, row_num, sheet_name, rate)
@@ -212,6 +217,8 @@ class Billing(unittest.TestCase):
                 Function_Call.click(self, '(//button[@class="btn btn-warning next-tab"])[2]')
             except:
                 Function_Call.click(self, '//li[@id="tab_make_pay"]')
+        else:
+            print(f"Direct Billing or Order Advance detected: Skipping Estimation search for {row_data.get('Bill Type')}")
         return True
 
     def _fill_summary_charges(self, row_data, row_num, sheet_name):
@@ -242,7 +249,7 @@ class Billing(unittest.TestCase):
         if total_val:
             try:
                 # Normalize total value
-                val = float(str(total_val).replace(',', '').strip())
+                val = float(str(total_val).replace(',', '').strip() if total_val and str(total_val).lower() != 'none' else 0)
                 if val >= 200000:
                     pan = self._generate_pan()
                     print(f"Total Amount {val} is >= 2 Lakh, Entering Random PAN: {pan}")
@@ -253,12 +260,12 @@ class Billing(unittest.TestCase):
                 print(f"Error checking Total for PAN: {e}")  
 
         received_str = Function_Call.get_value(self, '//input[@name="billing[tot_amt_received]"]')
-        received_value = float(received_str or 0)
-        cash_val = float(row_data.get("Cash") or 0)
+        received_value = float(received_str if received_str and str(received_str).lower() != 'none' else 0)
+        cash_val = float(row_data.get("Cash") if row_data.get("Cash") and str(row_data.get("Cash")).lower() != 'none' else 0)
         final_received = received_value
 
         if row_data.get('Received'):
-            percentage = float(row_data['Received'])
+            percentage = float(row_data['Received'] if row_data['Received'] and str(row_data['Received']).lower() != 'none' else 0)
             credit_val = (received_value * percentage) / 100
             final_received = credit_val
             
@@ -429,8 +436,8 @@ class Billing(unittest.TestCase):
                 sh.cell(row=row, column=9, value=amounts["NetBanking"])
 
             collected = amounts.get("Card", 0) + amounts.get("Cheque", 0) + amounts.get("NetBanking", 0) + amounts.get("Cash", 0)
-            total_raw = str(row_data.get("Total", 0)).replace(',', '').strip()
-            total = float(total_raw) if total_raw else 0
+            total_val = row_data.get("Total", 0)
+            total = float(str(total_val).replace(',', '').strip() if total_val and str(total_val).lower() != 'none' else 0)
             
             # Calculations
             sh.cell(row=row, column=10, value=collected) # Bill Amount

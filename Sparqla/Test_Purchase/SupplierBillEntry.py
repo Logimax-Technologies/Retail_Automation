@@ -306,7 +306,7 @@ class SupplierBillEntry(unittest.TestCase):
                 # Capture PO Number from column 5 (at the targeted job_id row)
                 try:
                     po_no = rows[0].find_element(By.XPATH, "./td[5]").text.strip()
-                    
+                    sleep(1)
                     # Click checkbox for the captured row
                     Function_Call.click(self, f'//table[@id="pur_entry_list"]//tr[contains(., "{search_val}")]//input[@type="checkbox"]')
                     sleep(1)

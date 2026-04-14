@@ -73,14 +73,14 @@ class PurchasePO(unittest.TestCase):
             # Column mapping
             data_map = {
                 "TestCaseId": 1, "TestStatus": 2, "ActualStatus": 3,
-                "OrderFor": 4, "Karigar": 5, "DueDate": 6,
-                "RateType": 7, "Product": 8, "Design": 9,
-                "SubDesign": 10, "WeightRange": 11, "OrderWeight": 12,
-                "Size": 13, "LessWeight": 14, "NetWeight": 15,
-                "StoneAmount": 16, "MCValue": 17, "Wastage%": 18,
-                "Description": 19, "Pieces": 20, "ExpectedPONo": 21,
-                "ExpectedStatus": 22, "CancelReason": 23, "Remark": 24, "Rate": 25,
-                "Branch": 26, "OrderNo": 27
+                "OrderFor": 4, "Karigar": 5, "DueDate": 6, "CustomerOrderNo":7,
+                "RateType": 8, "Product": 9, "Design": 10,
+                "SubDesign": 11, "WeightRange": 12, "OrderWeight": 13,
+                "Size": 14, "LessWeight": 15, "NetWeight": 16,
+                "StoneAmount": 17, "MCValue": 18, "Wastage%": 19,
+                "Description": 20, "Pieces": 21, "ExpectedPONo": 22,
+                "ExpectedStatus": 23, "CancelReason": 24, "Remark": 25, "Rate": 26,
+                "Branch": 27, "OrderNo": 28
             }
             
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
@@ -1110,10 +1110,10 @@ class PurchasePO(unittest.TestCase):
             
             # Update Expected PO No (Column U)
             if po_no:
-                sheet.cell(row=row_num, column=21, value=po_no)
+                sheet.cell(row=row_num, column=22, value=po_no)
             
             # Update Remark (Column X)
-            sheet.cell(row=row_num, column=24, value=f"{test_status} - {actual_status}").font = Font(color=color)
+            # sheet.cell(row=row_num, column=24, value=f"{test_status} - {actual_status}").font = Font(color=color)
             
             workbook.save(FILE_PATH)
             workbook.close()

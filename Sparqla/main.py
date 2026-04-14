@@ -178,7 +178,7 @@ class main():
                             print("yes")
                             Vendor_automation = VendorRegistration(driver) 
                             Data = Vendor_automation.test_vendor_registration()
-                        case "Customer":
+                        case "CustomerOrder":
                             print("yes")
                             Vendor_automation = CustomerOrder(driver)
                             Data = Vendor_automation.test_customer_order()  

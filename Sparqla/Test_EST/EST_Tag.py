@@ -12,6 +12,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 import re
 import math
+from datetime import datetime
 
 FILE_PATH = ExcelUtils.file_path
 class ESTIMATION_TAG(unittest.TestCase):
@@ -21,51 +22,60 @@ class ESTIMATION_TAG(unittest.TestCase):
         self.found_rows = [] # To track (sheet_name, row_idx) for updates
 
     @staticmethod
-    def _find_tag_source(tc_id, product, design, sub_design):
+    def _find_tag_source(product, design, sub_design):
         """
         Searches for a matching tag row in Tag_Detail or Purchase_TagDetail.
-        Returns: (sheet_name, row_idx, data_dict) or (None, None, None)
+        Ignores Test Case ID and picks the first available tag matching product criteria.
         """
         sheets_to_check = ["Tag_Detail", "Purchase_TagDetail"]
         workbook = load_workbook(FILE_PATH)
+        today_str = datetime.now().strftime("%Y-%m-%d")
         
         for sheet_name in sheets_to_check:
             if sheet_name not in workbook.sheetnames:
                 continue
             sheet = workbook[sheet_name]
-            # Search from top to bottom, first match wins
+            
+            # Pick first available match in current sheet (ignores TC ID check)
             for r in range(2, sheet.max_row + 1):
-                s_tc_id = str(sheet.cell(row=r, column=1).value or "").strip()
+                s_status = str(sheet.cell(row=r, column=14).value or "").strip().lower()
+                s_est_info = str(sheet.cell(row=r, column=15).value or "")
+                
+                # Skip if already estimated/billed today
+                if s_status in ["estimated", "billed"] and today_str in s_est_info:
+                    continue
+
                 s_product = str(sheet.cell(row=r, column=4).value or "").strip()
                 s_design = str(sheet.cell(row=r, column=5).value or "").strip()
                 s_sub_design = str(sheet.cell(row=r, column=6).value or "").strip()
-                
-                if (s_tc_id == str(tc_id).strip() and 
-                    s_product == str(product).strip() and 
+
+                if (s_product == str(product).strip() and 
                     s_design == str(design).strip() and 
                     s_sub_design == str(sub_design).strip()):
                     
-                    print(f"🔍 Found source data in {sheet_name} at row {r}")
-                    
-                    # Extract full details from source row
-                    data = {
-                        "Test Case Id": sheet.cell(row=r, column=1).value,
-                        "Lot": sheet.cell(row=r, column=2).value,
-                        "Tag No": sheet.cell(row=r, column=3).value,
-                        "Product": sheet.cell(row=r, column=4).value,
-                        "Design": sheet.cell(row=r, column=5).value,
-                        "Sub Design": sheet.cell(row=r, column=6).value,
-                        "Calc Type": sheet.cell(row=r, column=7).value,
-                        "Pieces": sheet.cell(row=r, column=8).value,
-                        "Gross Wgt": sheet.cell(row=r, column=9).value,
-                        "Less Wgt": sheet.cell(row=r, column=10).value,
-                        "Net Wgt": sheet.cell(row=r, column=11).value,
-                        "Wast %": sheet.cell(row=r, column=12).value,
-                        "Making Charge": sheet.cell(row=r, column=13).value,
-                        "Status": sheet.cell(row=r, column=14).value
-                    }
-                    return sheet_name, r, data
+                    print(f"🔍 Found matching tag in {sheet_name} at row {r} (Product: {s_product})")
+                    return sheet_name, r, ESTIMATION_TAG._extract_row_data(sheet, r)
+
         return None, None, None
+
+    @staticmethod
+    def _extract_row_data(sheet, r):
+        """Helper to extract row details from source sheets."""
+        return {
+            "Lot": sheet.cell(row=r, column=2).value,
+            "Tag No": sheet.cell(row=r, column=3).value,
+            "Product": sheet.cell(row=r, column=4).value,
+            "Design": sheet.cell(row=r, column=5).value,
+            "Sub Design": sheet.cell(row=r, column=6).value,
+            "Calc Type": sheet.cell(row=r, column=7).value,
+            "Pieces": sheet.cell(row=r, column=8).value,
+            "Gross Wgt": sheet.cell(row=r, column=9).value,
+            "Less Wgt": sheet.cell(row=r, column=10).value,
+            "Net Wgt": sheet.cell(row=r, column=11).value,
+            "Wast %": sheet.cell(row=r, column=12).value,
+            "Making Charge": sheet.cell(row=r, column=13).value,
+            "Status": sheet.cell(row=r, column=14).value
+        }
 
     def test_estimationtag(self,test_case_id,Board_Rate):
         driver = self.driver
@@ -84,11 +94,12 @@ class ESTIMATION_TAG(unittest.TestCase):
             current_id = sheet.cell(row=row_num, column=1).value  # Column 1 = Test Case Id
             if current_id == test_case_id:
                 # Lookup source data in Detail sheets
+                
                 prod = sheet.cell(row=row_num, column=6).value
                 des = sheet.cell(row=row_num, column=7).value
                 sub_des = sheet.cell(row=row_num, column=8).value
                 
-                src_sheet, src_row, source_data = ESTIMATION_TAG._find_tag_source(test_case_id, prod, des, sub_des)
+                src_sheet, src_row, source_data = ESTIMATION_TAG._find_tag_source(prod, des, sub_des)
                 
                 if not source_data:
                     msg = f"⚠️ No matching data for {test_case_id} ({prod}/{des}) in Tag_Detail/Purchase_TagDetail"
@@ -100,6 +111,7 @@ class ESTIMATION_TAG(unittest.TestCase):
                 self.found_rows.append((src_sheet, src_row))
                 
                 # [NEW] Update Tag_EST sheet with found source data (Col 4 to 15)
+                
                 sheet.cell(row=row_num, column=4, value=source_data["Lot"])
                 sheet.cell(row=row_num, column=5, value=source_data["Tag No"])
                 sheet.cell(row=row_num, column=6, value=source_data["Product"])

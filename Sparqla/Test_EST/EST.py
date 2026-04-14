@@ -240,8 +240,8 @@ class ESTIMATION(unittest.TestCase):
             
             # [NEW] Update source sheets (NonTag_Detail / Purchase_NonTagDetail) with Inventory tracking
             if row_data["Estimation Non-Tag"] == "Yes" and 'nontag_found_rows' in locals() and nontag_found_rows:
-                ESTIMATION_NonTag.update_source_inventory(nontag_found_rows)
-            
+                ESTIMATION_NonTag.update_source_inventory(nontag_found_rows, EST_details["Estimate"])
+
             # driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
             windows = driver.window_handles
             sleep(3)
@@ -316,6 +316,7 @@ class ESTIMATION(unittest.TestCase):
         sheet.cell(row=row, column=7, value=row_data["Customer"]) # Customer Number
         sheet.cell(row=row, column=9, value=row_data["Branch"])   # Delivery Location (using Branch)
         sheet.cell(row=row, column=10, value=type)               # Bill Type
+        sheet.cell(row=row, column=11, value="No")               # driect
         
         # Estimation Details (from PDF extraction: {Estimate, cgst, sgst, igst, total})
         sheet.cell(row=row, column=12, value=EST_details["Estimate"]) # EstNo
