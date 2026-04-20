@@ -56,7 +56,7 @@ class Cheque(unittest.TestCase):
                         )   
                 else:
                     pass
-                
+                sleep(2)
                 Function_Call.select_visible_text(self,f"(//select[@name='cheque_details[id_bank][]'])[{row}]", row_data["Bank"])
                 
                 if row_data["ChequeNo"]:

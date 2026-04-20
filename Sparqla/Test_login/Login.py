@@ -17,6 +17,7 @@ class Login(unittest.TestCase):
     def __init__(self,driver):
         self.driver =driver
         self.wait = WebDriverWait(driver, 30)
+        # self.driver.get('https://qa.retail.logimaxindia.com/?_dbtarget=auto&_dbtoken=LMX@2025')
     def test_login(self):
         #self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
         #self.driver.implicitly_wait(30)

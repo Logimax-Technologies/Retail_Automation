@@ -34,6 +34,7 @@ class ExcelUtils:
     #         print(f"Using existing Excel copy: {ExcelUtils.file_path}")
     file_path = r"C:\Users\admin\Desktop\sqrqlas\Sqarqla_Retail_data2.xlsx"
     # file_path = r"C:\Users\Dell\Desktop\sqrqlas\sqrqlas\Sqarqla_Retail_data20.xlsx"
+    # file_path =r"C:\Users\admin\Desktop\sqrqlas\Book1.xlsx"
     SCREENSHOT_PATH = r"C:\Retail_Automation\Sparqla\Reports\screenshots"
     
     BASE_URL = "https://qa.retail.logimaxindia.com/admin/" 
@@ -200,14 +201,14 @@ class ExcelUtils:
         return lot_list
                 
                 
-    def Tag_reserve(file_path, function_name):
+    def Tag_reserve(file_path, function_name,valid_rows):
          
         workbook = load_workbook(file_path)
         sheet = workbook[function_name]
         count = 0
 
         # Iterate through rows starting from row 2 (skip header)
-        for row in sheet.iter_rows(min_row=2, values_only=False):  
+        for row in sheet.iter_rows(min_row=2, max_row=valid_rows, values_only=False):  
             order_type = row[8].value       # Column J (OrderType)
             tag_scan = row[10].value        # Column K (TagScan)
 

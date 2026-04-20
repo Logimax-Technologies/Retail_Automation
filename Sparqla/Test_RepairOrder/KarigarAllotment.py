@@ -69,8 +69,9 @@ class KarigarAllotment(unittest.TestCase):
                 "AssignTo": 5,      # Karigar / Employee
                 "AssignName": 6,    # Name from Select2
                 "SmithDueDate": 7,  # Due Date
-                "Action": 8,        # Assign / Reject
-                "Remark": 9
+                "Branch": 8,        # Branch
+                "Action": 9,        # Assign / Reject
+                "Remark": 10
             }
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
@@ -104,6 +105,22 @@ class KarigarAllotment(unittest.TestCase):
         current_field = "Start Flow"
 
         try:
+
+            # 0. Filter Branch and Search
+            branch = str(row_data.get("Branch", "")).strip()
+            if branch and branch.lower() != "none" and branch != "":
+                current_field = "Filter Branch"
+                search_xpath = "//span[@class='select2-search select2-search--dropdown']/input"
+                try:
+                    # Select branch from dropdown
+                    Function_Call.dropdown_select(self, "//span[@id='select2-branch_filter-container']", branch, search_xpath)
+                    sleep(1)
+                    # Click main search button above grid
+                    Function_Call.click(self, "//button[@id='search_new_order_list']")
+                    sleep(3)
+                except Exception as e:
+                    print(f"⚠️ Warning: Could not filter branch {branch}: {e}")
+
             order_no = str(row_data["OrderNo"]) if row_data.get("OrderNo") else None
             assign_to = str(row_data["AssignTo"]).strip().lower() if row_data.get("AssignTo") else ""
             assign_name = str(row_data["AssignName"]) if row_data.get("AssignName") else None

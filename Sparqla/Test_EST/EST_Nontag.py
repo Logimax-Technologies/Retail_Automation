@@ -129,7 +129,6 @@ class ESTIMATION_NonTag(unittest.TestCase):
                     ceil_value,Test_Status,Actual_Status= Create_data
                     ESTIMATION_NonTag.update_excel_status(self,row_num, Test_Status, Actual_Status, Sheet_name)
                     salevalue = salevalue + float(ceil_value)
-                    row = row+1 # Increment for next item in web table
         return salevalue, getattr(self, 'nontag_found_rows', [])
                 # Remove processed customer from the list
                 
@@ -221,7 +220,7 @@ class ESTIMATION_NonTag(unittest.TestCase):
             pass
 
         if row_data["Pcs"]:
-            errors=Function_Call.fill_input(
+            Function_Call.fill_input(
             self,wait,
             locator=(By.XPATH, f'(//input[@name="est_catalog[pcs][]"])[{row}]'),
             value=row_data["Pcs"],

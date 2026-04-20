@@ -116,11 +116,8 @@ class Lot(unittest.TestCase):
             lwt_clear = workbook["Tag_LWt"]
             if lwt_clear.max_row > 1:
                 lwt_clear.delete_rows(2, lwt_clear.max_row)
-        pcs=[0]
-        gwt_total=[0.0]
-        lwt_total=[0.0]
-        all_stones = []
-        meta = {"Product": "", "Design": "", "Sub Design": "", "Lot Received": "", "Section": ""}
+        # Accumulate products for the same Lot ID in this list
+        lot_items = []
         
         for row_num in range(2, valid_rows):   
             # Define columns and dynamically fetch their values   
@@ -171,20 +168,17 @@ class Lot(unittest.TestCase):
                 if Create_data and len(Create_data) == 5:
                     lot, pcs_count, Product, lwt_from_create, stone_list = Create_data
                     if lot == lot_no:
-                        pcs[0] = pcs[0] + int(pcs_count)
-                        gwt_total[0] = gwt_total[0] + safe_float(row_data.get("GWT"))
-                        lwt_total[0] = lwt_total[0] + safe_float(lwt_from_create)
-                        if stone_list:
-                            all_stones.extend(stone_list)
-                        meta["Product"] = str(row_data.get("Product") or "")
-                        meta["Design"] = str(row_data.get("Design") or "")
-                        meta["Sub Design"] = str(row_data.get("Sub Design") or "")
-                        meta["Lot Received"] = str(row_data.get("Lot Received") or "")
-                        meta["Section"] = str(row_data.get("Section") or "")
-
+                        # Accumulate current product details for the Lot
+                        lot_items.append({
+                            "row_data": row_data,
+                            "pcs": pcs_count,
+                            "stone_list": stone_list,
+                            "lwt": lwt_from_create
+                        })
+                        
                         beforelist = lot_no
                         Products.append(Product)
-                        print(beforelist)
+                        print(f"Added product {Product} to lot accumulation. items: {len(lot_items)}")
                         continue
                 elif Create_data and len(Create_data) >= 5:
                     if len(Create_data) == 6:
@@ -192,17 +186,13 @@ class Lot(unittest.TestCase):
                     else: # Fallback for loop continue cases
                         lot, pcs_count, product, lwt_from_create, stone_list = Create_data
                     
-                    pcs[0] = pcs[0] + int(pcs_count)
-                    lwt_total[0] = lwt_total[0] + safe_float(lwt_from_create)
-                    gwt_total[0] = gwt_total[0] + safe_float(row_data.get("GWT"))
-                    if stone_list:
-                        all_stones.extend(stone_list)
-                    
-                    meta["Product"] = str(row_data.get("Product") or "")
-                    meta["Design"] = str(row_data.get("Design") or "")
-                    meta["Sub Design"] = str(row_data.get("Sub Design") or "")
-                    meta["Lot Received"] = str(row_data.get("Lot Received") or "")
-                    meta["Section"] = str(row_data.get("Section") or "")
+                    # Add the final product to the lot's accumulation
+                    lot_items.append({
+                        "row_data": row_data,
+                        "pcs": pcs_count,
+                        "stone_list": stone_list,
+                        "lwt": lwt_from_create
+                    })
 
                     
                     print(f"Lot ID: {Lot_id if 'Lot_id' in locals() else 'New'}")
@@ -215,7 +205,7 @@ class Lot(unittest.TestCase):
                     Status = ExcelUtils.get_Status(FILE_PATH, function_name)  
                     print(Status)   
                     if row_data["StockType"] == "Tagged":         
-                        data = self.update_Lot_id(Lot_id, row_count, pcs, gwt_total[0], lwt_total[0], meta, workbook, all_stones, Test_Status, Actual_Status)
+                        data = self.update_Lot_id(Lot_id, row_count, lot_items, workbook, Test_Status, Actual_Status)
 
                         pcs_count_val, message = data
                         row_count = pcs_count_val + row_count 
@@ -225,11 +215,8 @@ class Lot(unittest.TestCase):
                         self.update_BranchTransfer(row_data, workbook, row_num)
                         self.update_NonTag_Detail(row_data, workbook, row_num)
 
-                    pcs[0] = 0
-                    gwt_total[0] = 0.0
-                    lwt_total[0] = 0.0
-                    all_stones.clear()
-                    print(pcs)
+                    lot_items.clear()
+                    print(f"Lot {Lot_id} processed. Items cleared.")
                     Update_master = ExcelUtils.update_master_status(FILE_PATH, Status, function_name) 
                     
                     # Re-open workbook for the next iteration since update_Lot_id or other calls might have closed it
@@ -510,167 +497,118 @@ class Lot(unittest.TestCase):
         workbook.save(FILE_PATH)
         print(f"✅ NonTag_Detail Row {target_row} updated correctly.")
 
-    def update_Lot_id(self, Lot_id, row_count, pcs, g_wt_sum, l_wt_sum, meta, workbook, all_stones, test_status=None, actual_status=None):
-        """Distributes Lot metadata across Tag and Tag_LWt sheets. Returns (Pcs_count, message)."""
+    def update_Lot_id(self, Lot_id, start_row, lot_items, workbook, test_status=None, actual_status=None):
+        """Distributes Lot metadata for multiple products across Tag and Tag_LWt sheets. Returns (Total_Pcs_count, message)."""
         try:
-            Pcs_count = sum(map(int, pcs))
-            print(f"Distributing {Pcs_count} pieces for Lot: {Lot_id}")
             tag_sheet = workbook["Tag"]
             lwt_sheet = workbook["Tag_LWt"] if "Tag_LWt" in workbook.sheetnames else workbook.create_sheet("Tag_LWt")
-
-            # Determine the starting row for Tag_LWt
+            
+            # Determine starting row for Tag_LWt only once at beginning of Lot distribution
             lwt_row_start = lwt_sheet.max_row + 1
             if lwt_row_start == 2 and lwt_sheet.cell(row=1, column=1).value is None:
-                # Initialize headers if sheet is brand new
                 headers = ["Test Case Id", "Less Weight", "Type", "Name", "Code", "Pcs", "Wt", "Wt Type", "Cal.Type", "Rate", "Amount"]
                 for h_col, h_text in enumerate(headers, 1):
                     lwt_sheet.cell(row=1, column=h_col).value = h_text
                 lwt_row_start = 2
+            
+            current_tag_row = start_row
+            current_lwt_row = lwt_row_start
+            total_pcs_added = 0
 
-            try:
-                Pcs_count = int(Pcs_count)
-            except Exception:
-                Pcs_count = 1
+            # Process each product entry accumulated for this Lot
+            for item_idx, item in enumerate(lot_items):
+                row_data = item["row_data"]
+                stones = item["stone_list"]
+                pcs_count = int(item["pcs"])
+                lwt_total_val = Decimal(str(item["lwt"] or 0))
+                gwt_total_val = Decimal(str(row_data.get("GWT") or 0))
+                nwt_total_val = gwt_total_val - lwt_total_val
 
-            # Logic: NWT = GWT - LWT
-            total_gwt = Decimal(str(g_wt_sum or 0))
-            total_lwt = Decimal(str(l_wt_sum or 0))
-            total_nwt = total_gwt - total_lwt
+                print(f"Product {item_idx+1}/{len(lot_items)}: {row_data.get('Product')} - {pcs_count} pcs")
 
-            if Pcs_count > 0:
-                # 1. Distribute Net Weight (NWT) with random variance
-                weights = [Decimal(str(1 + random.uniform(-0.2, 0.2))) for _ in range(Pcs_count)]
-                if sum(weights) != 0:
-                    scale = total_nwt / sum(weights)
-                    nwt_list = [w * scale for w in weights]
-                else:
-                    nwt_list = [total_nwt / Pcs_count for _ in range(Pcs_count)]
+                if pcs_count <= 0:
+                    continue
 
-                # Round NWT to 3 decimal places
-                nwt_final = [w.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP) for w in nwt_list]
+                # Distribute NWT and LWT for this specific product's pieces
+                weights = [Decimal(str(1 + random.uniform(-0.1, 0.1))) for _ in range(pcs_count)]
+                scale = nwt_total_val / sum(weights) if sum(weights) != 0 else nwt_total_val / pcs_count
+                nwt_dist = [ (w * scale).quantize(Decimal("0.001"), ROUND_HALF_UP) for w in weights ]
+                
+                # Correction for rounding to match total NWT
+                diff_nwt = nwt_total_val - sum(nwt_dist)
+                if nwt_dist: nwt_dist[0] += diff_nwt
 
-                # Force sum to match total_nwt exactly
-                diff_nwt = total_nwt - sum(nwt_final)
-                if nwt_final:
-                    nwt_final[0] += diff_nwt
+                lwt_per_pcs = (lwt_total_val / pcs_count).quantize(Decimal("0.001"), ROUND_HALF_UP)
+                lwt_dist = [lwt_per_pcs for _ in range(pcs_count)]
+                diff_lwt = lwt_total_val - sum(lwt_dist)
+                if lwt_dist: lwt_dist[0] += diff_lwt
 
-                # 2. Distribute Less Weight (LWT) equally
-                lwt_per_pcs = (total_lwt / Pcs_count).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
-                lwt_final = [lwt_per_pcs for _ in range(Pcs_count)]
+                # Generate tags for this specific product
+                for i in range(pcs_count):
+                    tag_tc_id = f"TAG_{Lot_id}_{total_pcs_added + 1}"
+                    
+                    # Metadata population
+                    tag_sheet.cell(row=current_tag_row, column=1).value = tag_tc_id
+                    tag_sheet.cell(row=current_tag_row, column=2).value = test_status
+                    tag_sheet.cell(row=current_tag_row, column=3).value = actual_status
+                    tag_sheet.cell(row=current_tag_row, column=4).value = str(row_data.get("Lot Received") or "")
+                    tag_sheet.cell(row=current_tag_row, column=5).value = Lot_id
+                    tag_sheet.cell(row=current_tag_row, column=6).value = str(row_data.get("Product") or "")
+                    tag_sheet.cell(row=current_tag_row, column=7).value = str(row_data.get("Section") or "GOLD")
+                    tag_sheet.cell(row=current_tag_row, column=8).value = str(row_data.get("Design") or "")
+                    tag_sheet.cell(row=current_tag_row, column=9).value = str(row_data.get("Sub Design") or "")
+                    tag_sheet.cell(row=current_tag_row, column=10).value = 1
+                    tag_sheet.cell(row=current_tag_row, column=11).value = 1
+                    
+                    indiv_lwt = float(lwt_dist[i])
+                    indiv_nwt = float(nwt_dist[i])
+                    tag_sheet.cell(row=current_tag_row, column=12).value = round(indiv_nwt + indiv_lwt, 3) # Gross Wt
+                    tag_sheet.cell(row=current_tag_row, column=13).value = indiv_lwt                     # Less Wt
 
-                # Force sum to match total_lwt exactly
-                diff_lwt = total_lwt - sum(lwt_final)
-                if lwt_final:
-                    lwt_final[0] += diff_lwt
+                    # Distribute stones for this piece from this product's stone list
+                    has_stone = False
+                    if stones:
+                        for stone in stones:
+                            total_s_pcs = safe_float(stone.get("Pcs"))
+                            total_s_wt = safe_float(stone.get("Wt"))
+                            s_rate = safe_float(stone.get("Rate"))
 
-                # 3. Apply to Sheets
-                current_lwt_row = lwt_row_start
-                for i in range(Pcs_count):
-                    row_Num = row_count + i
-
-                    # Assign a unique Test Case ID for each piece
-                    tag_tc_id = f"TAG_{Lot_id}_{i+1}"
-                    tag_sheet.cell(row=row_Num, column=1).value = tag_tc_id
-
-                    # Column 2 & 3: Status
-                    if test_status:
-                        tag_sheet.cell(row=row_Num, column=2).value = test_status
-                    if actual_status:
-                        tag_sheet.cell(row=row_Num, column=3).value = actual_status
-
-
-                    # Column 4: Branch
-                    tag_sheet.cell(row=row_Num, column=4).value = meta.get("Lot Received")
-
-                    # Column 5: Lot ID
-                    tag_sheet.cell(row=row_Num, column=5).value = Lot_id
-
-                    # Column 6: Product
-                    tag_sheet.cell(row=row_Num, column=6).value = meta.get("Product")
-
-                    # Column 7: Section
-                    tag_sheet.cell(row=row_Num, column=7).value = "GOLD CHAIN"
-
-
-
-                    # Column 8: Design
-                    tag_sheet.cell(row=row_Num, column=8).value = meta.get("Design")
-
-                    # Column 9: Sub Design
-                    tag_sheet.cell(row=row_Num, column=9).value = meta.get("Sub Design")
-
-                    # Column 10: Pieces (Individual tag is usually 1 pcs)
-                    tag_sheet.cell(row=row_Num, column=10).value = 1
-
-                    # Column 11: No. of items (Single tagging)
-                    tag_sheet.cell(row=row_Num, column=11).value = 1
-
-                    # Column 13: Individual Less Weight
-                    indiv_lwt = float(lwt_final[i])
-                    tag_sheet.cell(row=row_Num, column=13).value = indiv_lwt
-
-                    # Column 12: Individual Gross Weight (NWT + LWT)
-                    indiv_nwt = float(nwt_final[i])
-                    tag_sheet.cell(row=row_Num, column=12).value = round(indiv_nwt + indiv_lwt, 3)
-
-                    # Update Tag_LWt with distributed stone details for this specific piece
-                    has_stone_this_tag = False
-                    if all_stones:
-                        for stone in all_stones:
-                            # Cumulative distribution to preserve integers and match Lot totals
-                            total_pcs = safe_float(stone.get("Pcs"))
-                            total_wt = safe_float(stone.get("Wt"))
-                            stone_rate = safe_float(stone.get("Rate"))
-
-                            # (i+1) vs i approach ensures 25/50 leads to 1 or 0 per tag proportionally
-                            tag_pcs = int((i + 1) * total_pcs / Pcs_count) - int(i * total_pcs / Pcs_count)
-
-                            # Weight Distribution logic:
-                            if total_pcs > 0:
-                                # Tied to piece distribution - weighted by pieces
-                                tag_wt = (total_wt / total_pcs) * tag_pcs
+                            # Proportional piece distribution per tag
+                            tag_s_pcs = int((i + 1) * total_s_pcs / pcs_count) - int(i * total_s_pcs / pcs_count)
+                            if total_s_pcs > 0:
+                                tag_s_wt = (total_s_wt / total_s_pcs) * tag_s_pcs
                             else:
-                                # Uniform distribution for weight-only stones
-                                tag_wt = ((i + 1) * total_wt / Pcs_count) - (i * total_wt / Pcs_count)
+                                tag_s_wt = ((i + 1) * total_s_wt / pcs_count) - (i * total_s_wt / pcs_count)
 
-                            # Only add to Tag_LWt if there's a stone or weight for this piece
-                            if tag_pcs > 0 or tag_wt > 0:
-                                has_stone_this_tag = True
+                            if tag_s_pcs > 0 or tag_s_wt > 0:
+                                has_stone = True
                                 lwt_sheet.cell(row=current_lwt_row, column=1).value = tag_tc_id
                                 lwt_sheet.cell(row=current_lwt_row, column=2).value = "Yes"
                                 lwt_sheet.cell(row=current_lwt_row, column=3).value = stone.get("Type")
                                 lwt_sheet.cell(row=current_lwt_row, column=4).value = stone.get("Name")
                                 lwt_sheet.cell(row=current_lwt_row, column=5).value = stone.get("Code")
-                                lwt_sheet.cell(row=current_lwt_row, column=6).value = tag_pcs
-                                lwt_sheet.cell(row=current_lwt_row, column=7).value = round(tag_wt, 3)
+                                lwt_sheet.cell(row=current_lwt_row, column=6).value = tag_s_pcs
+                                lwt_sheet.cell(row=current_lwt_row, column=7).value = round(tag_s_wt, 3)
                                 lwt_sheet.cell(row=current_lwt_row, column=8).value = stone.get("Wt Type")
                                 lwt_sheet.cell(row=current_lwt_row, column=9).value = stone.get("Cal.Type")
-                                lwt_sheet.cell(row=current_lwt_row, column=10).value = stone_rate
-
-                                # Recalculate amount based on distributed values and Cal.Type
-                                cal_type = str(stone.get("Cal.Type") or "").strip().lower()
-                                if cal_type == "pcs":
-                                    indiv_amount = tag_pcs * stone_rate
-                                else:  # Default to "wt" calculation
-                                    indiv_amount = tag_wt * stone_rate
-
-                                lwt_sheet.cell(row=current_lwt_row, column=11).value = round(indiv_amount, 2)
+                                lwt_sheet.cell(row=current_lwt_row, column=10).value = s_rate
+                                
+                                cal = str(stone.get("Cal.Type")).strip().lower()
+                                lwt_sheet.cell(row=current_lwt_row, column=11).value = round(tag_s_pcs * s_rate if cal == "pcs" else tag_s_wt * s_rate, 2)
                                 current_lwt_row += 1
 
-                    # Update Less Weight status in Tag sheet based on actual distribution
-                    if has_stone_this_tag:
-                        tag_sheet.cell(row=row_Num, column=13).value = "Yes"
-                    else:
-                        tag_sheet.cell(row=row_Num, column=13).value = "No"
-
-                    # Note: User explicitly said "col 13 net no need"
+                    # Optional: Mark yes/no for stones in Tag sheet if required (currently col 13 is LWT)
+                    # If user wants a separate stone status, it would go elsewhere.
+                    total_pcs_added += 1
+                    current_tag_row += 1
 
             workbook.save(FILE_PATH)
-            workbook.close()
-            return Pcs_count, "Lot ID and Metadata distributed in Tag sheet successfully"
+            return total_pcs_added, f"Distributed {total_pcs_added} tags for {len(lot_items)} products successfully."
+            
         except Exception as e:
-            print(f"❌ update_Lot_id failed: {e}")
-            return 0, f"update_Lot_id error: {str(e)}"
+            import traceback
+            traceback.print_exc()
+            return 0, f"update_Lot_id failed: {str(e)}"
 
     def Lotdetails(self, TestCaseId):
         """Returns row data dict for given TestCaseId from the Lot sheet, or {} on failure."""

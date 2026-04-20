@@ -229,7 +229,7 @@ class RepairOrder(unittest.TestCase):
 
         # 5. Verification
         try:
-            return self.extract_id_and_verify(row_data)
+            return self.extract_id_and_verify(row_data, row_num, sheet_name)
         except Exception as e:
             return ("Pass", f"Saved but verification failed: {e}")
 
@@ -271,7 +271,7 @@ class RepairOrder(unittest.TestCase):
         
         Function_Call.click(self, "//button[@id='update_stone_details']") # Modal Save
 
-    def extract_id_and_verify(self, row_data):
+    def extract_id_and_verify(self, row_data, row_num, sheet_name):
         driver = self.driver
         main_window = driver.current_window_handle
         
@@ -354,10 +354,34 @@ class RepairOrder(unittest.TestCase):
             # Save the captured ID to KarigarAllotment sheet as well (OrderNo is Column 4)
             if "KarigarAllotment" in workbook.sheetnames:
                 ka_sheet = workbook["KarigarAllotment"]
+                Testcaseid = sheet.cell(row=row_num, column=1).value
+                ka_sheet.cell(row=row_num, column=1).value = Testcaseid
                 ka_sheet.cell(row=row_num, column=4).value = captured_no
+                ka_sheet.cell(row=row_num, column=5).value = 'Karigar'
+                ka_sheet.cell(row=row_num, column=6).value = 'Thirumala'
+                # Update Smith Due Date (Column 7) using Due Date from RepairOrder (Column 16)
+                due_date = sheet.cell(row=row_num, column=16).value
+                ka_sheet.cell(row=row_num, column=7).value = due_date
+                Branch=sheet.cell(row=row_num, column=7).value
+                ka_sheet.cell(row=row_num, column=8).value = Branch
+
+                
             if "RepairOrderStatus" in workbook.sheetnames:
                 ros_sheet = workbook["RepairOrderStatus"]
+                Testcaseid = sheet.cell(row=row_num, column=1).value
+                ros_sheet.cell(row=row_num, column=1).value = Testcaseid
                 ros_sheet.cell(row=row_num, column=4).value = captured_no
+                Branch=sheet.cell(row=row_num, column=7).value
+                ros_sheet.cell(row=row_num, column=5).value = Branch
+                ros_sheet.cell(row=row_num, column=6).value = "Today" 
+                Customer=sheet.cell(row=row_num, column=4).value
+                ros_sheet.cell(row=row_num, column=7).value = Customer
+                # ros_sheet.cell(row=row_num, column=8).value = 'Repair|HOOK|22KT GOLD ORNAMENTS|91.6000|GOLD BANGLES|KERALA|LK BANGLE|1|2|1|Per Pcs|10|1000'
+                ros_sheet.cell(row=row_num, column=10).value='1000'
+                ros_sheet.cell(row=row_num, column=11).value = 'Complete'             
+                Customer_No=sheet.cell(row=row_num, column=8).value
+                ros_sheet.cell(row=row_num, column=13).value = Customer_No
+                
                 
         workbook.save(FILE_PATH)
 

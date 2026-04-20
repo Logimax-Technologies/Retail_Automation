@@ -161,7 +161,7 @@ class Tag_Stone(unittest.TestCase):
                     TotalAmount = ""
                     for _ in range(6):  # poll up to ~3 seconds
                         TotalAmount = wait.until(EC.visibility_of_element_located(
-                            (By.XPATH,"//table[@id='estimation_stone_cus_item_details']/tfoot/tr/td[13]"))).text
+                            (By.XPATH,"//table[@id='estimation_stone_cus_item_details']/tfoot/tr/td[14]"))).text
                         if TotalAmount.strip():
                             break
                         sleep(0.5)

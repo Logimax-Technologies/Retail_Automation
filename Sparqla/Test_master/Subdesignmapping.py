@@ -102,57 +102,57 @@ class Subdesignmapping(unittest.TestCase):
                 input_box.send_keys(SubDesign)
                 input_box.send_keys(Keys.ENTER)
             print("✅ Design added:", SubDesign_list)
-        error=Function_Call.alert1(self,"//*[@id=\"update_sup_design_mapping\"]")
-        print(error)
-        if error =="Warning!:Sub Design Mapped successfully":
+        # error=Function_Call.alert1(self,"//*[@id=\"update_sup_design_mapping\"]")
+        # print(error)
+        # if error =="Warning!:Sub Design Mapped successfully":
+        #     Test_Status="Pass"
+        #     Actual_Status= "subdesign mapped successfully"
+        # else:
+        #     Test_Status="Fail"
+        #     Actual_Status= "subdesign mapped not successfully"
+        #     return Test_Status,Actual_Status,        
+        wait.until(EC.element_to_be_clickable((By.XPATH,"//*[@id=\"update_sup_design_mapping\"]"))).click()
+        sleep(2)
+        wait.until(EC.element_to_be_clickable((By.ID,"select2-prod_filter-container"))).click()
+        wait.until(EC.element_to_be_clickable((By.XPATH,"/html/body/span/span/span[1]/input"))).clear()
+        wait.until(EC.element_to_be_clickable((By.XPATH,"/html/body/span/span/span[1]/input"))).send_keys(row_data["selectProduct"],Keys.ENTER)
+        sleep(2)
+        wait.until(EC.element_to_be_clickable((By.ID,"select2-select_design_fitler-container"))).click()
+        wait.until(EC.element_to_be_clickable((By.XPATH,"(//input[@class='select2-search__field'])[3]"))).clear()
+        wait.until(EC.element_to_be_clickable((By.XPATH,"(//input[@class='select2-search__field'])[3]"))).send_keys(row_data["selectDesign"],Keys.ENTER)
+        sleep(2)
+       # Example: Excel "selectDesign" column contains values like: "GOLD CHAIN,GOLD PENDANT,GOLD BANGLES"
+        SelectSubDesign = row_data["SelectSubDesign"]
+        if SelectSubDesign:  
+            # Split into list if comma separated
+            SelectSubDesign_list = [s.strip() for s in SelectSubDesign.split(",")]
+      
+            DisplaySubDesign=[]
+            for SelectSubDesign in SelectSubDesign_list:
+                # Locate input box inside dropdown
+                dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[@id='select2-sub_design_filter-container']/span")))
+                dropdown.click()
+                input_box = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, "/html/body/span/span/span[1]/input")
+                ))
+                input_box.clear()
+                input_box.send_keys(SelectSubDesign,Keys.ENTER)
+                wait.until(EC.element_to_be_clickable((By.ID,"search_sub_design_maping"))).click()
+                sleep(1)
+                product = wait.until(EC.element_to_be_clickable((By.XPATH,"//*[@id=\"subdesign_list\"]/tbody/tr/td[2]"))).text
+                print(product)
+                design = wait.until(EC.element_to_be_clickable((By.XPATH,"//*[@id=\"subdesign_list\"]/tbody/tr/td[3]"))).text
+                print(design)
+                subdesign = wait.until(EC.element_to_be_clickable((By.XPATH,"//*[@id=\"subdesign_list\"]/tbody/tr/td[4]"))).text
+                print(subdesign)
+                DisplaySubDesign.append(subdesign) 
+        if row_data["selectProduct"]==product and row_data["selectDesign"]==design and SelectSubDesign_list==DisplaySubDesign:
             Test_Status="Pass"
             Actual_Status= "subdesign mapped successfully"
         else:
             Test_Status="Fail"
             Actual_Status= "subdesign mapped not successfully"
-            return Test_Status,Actual_Status,        
-    #     wait.until(EC.element_to_be_clickable((By.XPATH,"//*[@id=\"update_sup_design_mapping\"]"))).click()
-    #     sleep(2)
-    #     wait.until(EC.element_to_be_clickable((By.ID,"select2-prod_filter-container"))).click()
-    #     wait.until(EC.element_to_be_clickable((By.XPATH,"/html/body/span/span/span[1]/input"))).clear()
-    #     wait.until(EC.element_to_be_clickable((By.XPATH,"/html/body/span/span/span[1]/input"))).send_keys(row_data["selectProduct"],Keys.ENTER)
-    #     sleep(2)
-    #     wait.until(EC.element_to_be_clickable((By.ID,"select2-select_design_fitler-container"))).click()
-    #     wait.until(EC.element_to_be_clickable((By.XPATH,"(//input[@class='select2-search__field'])[3]"))).clear()
-    #     wait.until(EC.element_to_be_clickable((By.XPATH,"(//input[@class='select2-search__field'])[3]"))).send_keys(row_data["selectDesign"],Keys.ENTER)
-    #     sleep(2)
-    #    # Example: Excel "selectDesign" column contains values like: "GOLD CHAIN,GOLD PENDANT,GOLD BANGLES"
-    #     SelectSubDesign = row_data["SelectSubDesign"]
-    #     if SelectSubDesign:  
-    #         # Split into list if comma separated
-    #         SelectSubDesign_list = [s.strip() for s in SelectSubDesign.split(",")]
-      
-    #         DisplaySubDesign=[]
-    #         for SelectSubDesign in SelectSubDesign_list:
-    #             # Locate input box inside dropdown
-    #             dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[@id='select2-sub_design_filter-container']/span")))
-    #             dropdown.click()
-    #             input_box = wait.until(EC.element_to_be_clickable(
-    #                 (By.XPATH, "/html/body/span/span/span[1]/input")
-    #             ))
-    #             input_box.clear()
-    #             input_box.send_keys(SelectSubDesign,Keys.ENTER)
-    #             wait.until(EC.element_to_be_clickable((By.ID,"search_sub_design_maping"))).click()
-    #             sleep(1)
-    #             product = wait.until(EC.element_to_be_clickable((By.XPATH,"//*[@id=\"subdesign_list\"]/tbody/tr/td[2]"))).text
-    #             print(product)
-    #             design = wait.until(EC.element_to_be_clickable((By.XPATH,"//*[@id=\"subdesign_list\"]/tbody/tr/td[3]"))).text
-    #             print(design)
-    #             subdesign = wait.until(EC.element_to_be_clickable((By.XPATH,"//*[@id=\"subdesign_list\"]/tbody/tr/td[4]"))).text
-    #             print(subdesign)
-    #             DisplaySubDesign.append(subdesign) 
-    #     if row_data["selectProduct"]==product and row_data["selectDesign"]==design and SelectSubDesign_list==DisplaySubDesign:
-    #         Test_Status="Pass"
-    #         Actual_Status= "subdesign mapped successfully"
-    #     else:
-    #         Test_Status="Fail"
-    #         Actual_Status= "subdesign mapped not successfully"
-    #     return Test_Status,Actual_Status,
+        return Test_Status,Actual_Status,
             
     def Delete(self,row_data):   
         driver = self.driver

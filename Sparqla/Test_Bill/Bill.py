@@ -57,7 +57,7 @@ class Billing(unittest.TestCase):
                 "Is Tobe": 20, "Received": 21, "Credit Due Date": 22,
                 "Gift Voucher": 23, "Cash": 24, "Creditcard": 25, "Cheque": 26,
                 "NetBanking": 27, "BillNo": 28, "Keep_it_As": 29, "Store As": 30,
-                "OrderNo": 31, "Amount": 32
+                "OrderNo": 31, "Amount": 32, "IGST":33, "RepairAmount": 34
             }
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
             
@@ -65,6 +65,7 @@ class Billing(unittest.TestCase):
                 print(f"Row {row_num}: Bill No {row_data['BillNo']} already generated successfully. skipping... ✅")
                 continue
 
+            self.repair_total = 0  # Reset for each row
             print(f"Starting test case: {row_data['Test Case Id']}")
             
             self.create(row_data, row_num, sheet_name, rate)
@@ -161,6 +162,12 @@ class Billing(unittest.TestCase):
                 Function_Call.click(self, '//input[@id="bill_type_order_del"]')
             case "Repair Order Delivery":
                 Function_Call.click(self, '//input[@id="repair_order_delivery"]')
+                Function_Call.fill_input2(self, '//input[@id="filter_order_no"]', row_data.get("OrderNo"))
+                Function_Call.click(self, '//button[@id="search_order_no"]')
+                Function_Call.click2(self, '(//button[@class="btn btn-close btn-warning"])[11]')
+                Function_Call.click(self, '//a[@id="tab_items"]')
+                # Validate Sales Items Amount and Repair Item Details Amount
+                self._validate_repair_order_amounts(row_data, row_num, sheet_name)
         return True
 
     def _select_last_filter_bill(self, row_num, sheet_name):
@@ -189,29 +196,32 @@ class Billing(unittest.TestCase):
     def _handle_total_summary(self, row_data, row_num, sheet_name):
         """Handles estimations, calculations, and charges in the summary tab."""
         if row_data.get("driect") == 'No' and row_data.get("Bill Type") != "ORDER ADVANCE":
-            Function_Call.fill_input2(self, '//input[@id="filter_est_no"]', row_data["EstNo"])
-            Function_Call.click(self, '//button[@id="search_est_no"]')
-            sleep(2)
-            Function_Call.click(self, '(//button[@class="btn btn-close btn-warning"])[11]')
-            sleep(3)
-            Function_Call.click(self, "//a[normalize-space()='Total Summary']")
+            if row_data.get("Bill Type") != "Repair Order Delivery":
+                Function_Call.fill_input2(self, '//input[@id="filter_est_no"]', row_data["EstNo"])
+                Function_Call.click(self, '//button[@id="search_est_no"]')
+                sleep(2)
+                Function_Call.click(self, '(//button[@class="btn btn-close btn-warning"])[11]')
+                sleep(3)
+                Function_Call.click(self, "//a[normalize-space()='Total Summary']")
             
-            # Fetch summary details
-            summary_labels = {
-                "Taxable Sale Amount": "//span[@class='summary_lbl summary_sale_amt']",
-                "CGST": '//span[@class="summary_lbl sales_cgst"]',
-                "SGST": '//span[@class="summary_lbl sales_sgst"]',
-                "IGST": '//span[@class="summary_lbl sales_igst"]',
-                "Sale Amount": '//span[@class="summary_lbl sale_amt_with_tax"]',
-                "Purchase Amount": '//span[@class="summary_lbl summary_pur_amt"]'
-            }
-            for label, xpath in summary_labels.items():
-                val = Function_Call.get_text(self, xpath)
-                print(f"{label}: {val}")
+            
+                # Fetch summary details
+                summary_labels = {
+                    "Taxable Sale Amount": "//span[@class='summary_lbl summary_sale_amt']",
+                    "CGST": '//span[@class="summary_lbl sales_cgst"]',
+                    "SGST": '//span[@class="summary_lbl sales_sgst"]',
+                    "IGST": '//span[@class="summary_lbl sales_igst"]',
+                    "Sale Amount": '//span[@class="summary_lbl sale_amt_with_tax"]',
+                    "Purchase Amount": '//span[@class="summary_lbl summary_pur_amt"]'
+                }
+                for label, xpath in summary_labels.items():
+                    val = Function_Call.get_text(self, xpath)
+                    print(f"{label}: {val}")
 
-            if Function_Call.get_text(self, summary_labels["Purchase Amount"]) == '0.00':
-                self._fill_summary_charges(row_data, row_num, sheet_name)
-            
+                if Function_Call.get_text(self, summary_labels["Purchase Amount"]) == '0.00':
+                    self._fill_summary_charges(row_data, row_num, sheet_name)
+            else:
+                Function_Call.click(self, "//a[normalize-space()='Total Summary']")
             # Navigate to the next tab (Make Payment)
             try:
                 Function_Call.click(self, '(//button[@class="btn btn-warning next-tab"])[2]')
@@ -245,7 +255,13 @@ class Billing(unittest.TestCase):
             pass
 
         # Check for PAN mandatory threshold (2 Lakh)
-        total_val = row_data.get("Total")
+        # For Repair Order Case, use calculated total; otherwise use Excel
+        if row_data.get("Bill Type") == "Repair Order Delivery" and getattr(self, "repair_total", 0):
+            total_val = self.repair_total
+            print(f"Using calculated Repair Order Total: {total_val}")
+        else:
+            total_val = row_data.get("Total")
+
         if total_val:
             try:
                 # Normalize total value
@@ -374,6 +390,232 @@ class Billing(unittest.TestCase):
         except:
              self._update_excel_status(row_num, "Fail", "Success message not found", sheet_name)
   
+    def _get_network_response_data(self):
+        """Parse Chrome performance log to extract 'respondedata'.
+        Supports two modes:
+          1. Socket.IO (WebSocket FrameReceived)
+          2. Standard HTTP (Network.responseReceived + CDP getResponseBody)
+        """
+        import json as _json
+        try:
+            logs = self.driver.get_log('performance')
+        except Exception as e:
+            print(f"⚠️ Performance log not available: {e}")
+            return {}
+
+        # Scan newest frames first
+        for entry in reversed(logs):
+            try:
+                msg = _json.loads(entry['message'])['message']
+                method = msg.get('method', '')
+
+                # Mode 1: Standard HTTP POST (e.g. getEstimationDetails)
+                if method == 'Network.responseReceived':
+                    url = msg['params']['response']['url']
+                    if 'getEstimationDetails' in url:
+                        req_id = msg['params']['requestId']
+                        body_data = self.driver.execute_cdp_cmd('Network.getResponseBody', {'requestId': req_id})
+                        body = _json.loads(body_data.get('body', '{}'))
+                        resp = body.get('responsedata', {})
+                        if resp:
+                            print(f"✅ Captured data via HTTP: {url.split('/')[-1]}")
+                            return resp
+            except Exception:
+                continue
+
+        return {}
+
+    def _validate_repair_order_amounts(self, row_data, row_num, sheet_name):
+        """After Repair Order Delivery loads, validates:
+        1. Sales Items table calculation (Taxable, IGST, Total Amount).
+        2. Repair Item Details amount (DOM vs Network vs Excel).
+        """
+        
+        sleep(2)  # Let page render
+
+        CALC_TYPE_MAP = {
+            "0": "Mc & Wast On Gross",
+            "1": "Mc & Wast On Net",
+            "2": "Mc on Gross, Wast On Net",
+            "3": "Fixed Rate",
+            "4": "Fixed Rate based on Weight",
+        }
+
+        # Initialize totals for grand Total calculation
+        calc_total_3 = 0
+        excel_repair_amt = 0
+
+        # ── Fetch data from network (primary source) ─────────────────────────────
+        resp_data = self._get_network_response_data()
+        net_items = resp_data.get('item_details', [])
+        net_orders = resp_data.get('order_details', [])
+
+        print(f"✅ Network Data: {len(net_items)} sale item(s), {len(net_orders)} repair order(s)")
+
+        # ── 1. Sales Items Table — calculation_based_on formula check ─────────────
+        try:
+            # Confirm Sales Items table is present (table id confirmed from DevTools)
+            self.wait.until(EC.presence_of_element_located(
+                (By.XPATH, '//table[@id="billing_sale_details"]')))
+            print("✅ Sales Items table (billing_sale_details) is available")
+
+            def _safe_float(xpath, default=0.0):
+                """Read value/text from element and parse as float."""
+                try:
+                    val = Function_Call.get_value(self, xpath)
+                    if val and str(val).strip() not in ("", "0"):
+                        return round(float(str(val).replace(',', '').strip()), 2)
+                except Exception:
+                    pass
+                try:
+                    val = Function_Call.get_text(self, xpath)
+                    if val and str(val).strip() not in ("", "0"):
+                        return round(float(str(val).replace(',', '').strip()), 2)
+                except Exception:
+                    pass
+                return default
+
+            def _safe_str(xpath, default=""):
+                """Read value attribute (works for select and input)."""
+                try:
+                    val = Function_Call.get_value(self, xpath)
+                    if val is not None:
+                        return str(val).strip()
+                except Exception:
+                    pass
+                try:
+                    val = Function_Call.get_text(self, xpath)
+                    if val:
+                        return str(val).strip()
+                except Exception:
+                    pass
+                return default
+
+            # ── Read calc_type and mc_type: network first, DOM fallback ───────────
+            _ROW = '//table[@id="billing_sale_details"]//tbody//tr[1]//'  # User preferred scope
+            
+            # Use data from network if available
+            net_item = net_items[0] if net_items else {}
+            calc_type = str(net_item.get('calculation_based_on', '')).strip() if net_item else ""
+            if not calc_type:
+                calc_type = _safe_str(f'{_ROW}select[@name="sale[calculation_based_on][]"]')
+            
+            # MC Type ID mapping (1="Gram", 2="Pcs")
+            mc_type_raw = _safe_str(f'{_ROW}select[@name="sale[bill_mctype][]"]')
+            if mc_type_raw == '1':
+                mc_type = "pcs" 
+            else:
+                mc_type = "gram"
+
+            print(f"Calc Type used: '{calc_type}' ({CALC_TYPE_MAP.get(calc_type, 'Unknown')}) | MC Type: {mc_type}") 
+
+            # ── Read row fields (Exact Name Attributes) ───────────────────────────
+            n_wt     = _safe_float(f'{_ROW}input[@name="sale[net][]"]')
+            wast_wt  = _safe_float(f'{_ROW}input[@class="form-control bill_wastage_wt"]')
+            mc_val   = _safe_float(f'{_ROW}input[@name="sale[mc][]"]')
+            pcs      = _safe_float(f'{_ROW}input[@name="sale[pcs][]"]', default=1.0)
+            rate     = _safe_float(f'{_ROW}input[@class="form-control bill_rate_per_grm per_grm_amount"]')
+            discount = _safe_float(f'{_ROW}input[@name="sale[discount][]"]')
+
+            # ── Read displayed values ─────────────────────────────────────────────
+            taxable_ui = _safe_float(f'{_ROW}input[@class="form-control bill_taxable_amt"]')
+            tax_amt    = _safe_float(f'{_ROW}td[@class="tax_amt"]')
+            metal_amt  = 0
+            ui_amount  = _safe_float(f'{_ROW}input[@name="sale[billamount][]"]')
+
+            g_wt = round(n_wt + wast_wt, 3) 
+
+            # ── Compute MC Amount based on calculation_based_on ───────────────────
+            if calc_type in ("0", "2"):
+                mc_amt = round(pcs * mc_val, 2) if mc_type == "pcs" else round(g_wt * mc_val, 2)
+            elif calc_type == "1":
+                mc_amt = round(pcs * mc_val, 2) if mc_type == "pcs" else round(n_wt * mc_val, 2)
+            elif calc_type == "3":
+                mc_amt = round(mc_val, 2)
+            elif calc_type == "4":
+                mc_amt = round(n_wt * mc_val, 2)
+            else:
+                mc_amt = round(pcs * mc_val, 2)
+
+            # ── Expected Formulas ─────────────────────────────────────────────────
+            metal_cost      = round(g_wt * rate, 2)
+            expected_taxable = round(metal_cost + mc_amt - discount, 2)
+            expected_amount  = round(taxable_ui + tax_amt + metal_amt, 2)
+            print(expected_amount)
+
+            calc_label = CALC_TYPE_MAP.get(calc_type, f"Unknown({calc_type})")
+            print(f"\n Sales Items Calculation Verification:")
+            print(f"   [{calc_label}] | N.Wt={n_wt}, Wast_Wt={wast_wt}, G.Wt={g_wt}")
+            print(f"   Rate={rate}, Disc={discount}, MC_Val={mc_val} ({mc_type})")
+            print(f"   Expected Taxable: ({g_wt} * {rate}) + {mc_amt} - {discount} = {expected_taxable}")
+            print(f"   UI Taxable: {taxable_ui}")
+
+            # ── Check 1: Taxable Amt formula ──────────────────────────────────────
+            if expected_taxable == taxable_ui:
+                print(f" ✅ Taxable Amt PASS: {expected_taxable} == UI")
+            else:
+                msg = f"Taxable Amt Mismatch: Expected {expected_taxable} != UI {taxable_ui} ⚠️"
+                print(f" ⚠️ {msg}")
+                Function_Call.Remark(self, row_num, msg, sheet_name)
+
+            # ── Check 2: 3% GST Verification ──────────────────────────────────────
+            calc_tax_3 = round(expected_taxable * 0.03, 2)
+            calc_total_3 = round(expected_taxable + calc_tax_3, 2)
+
+            if calc_total_3 == ui_amount:
+                print(f" ✅ 3% GST PASS: {expected_taxable} + {calc_tax_3} (3%) = {ui_amount}")
+            else:
+                msg = f"3% GST Mismatch: {expected_taxable} + 3%({calc_tax_3}) = {calc_total_3} != UI={ui_amount} ⚠️"
+                print(f" ⚠️ {msg}")
+                Function_Call.Remark(self, row_num, msg, sheet_name)
+            
+                
+                
+
+        except Exception as e:
+            msg = f"Sales Items table not found or calculation unreadable ⚠️: {e}"
+            print(f"❌ {msg}")
+            Function_Call.Remark(self, row_num, msg, sheet_name)
+
+        # ── 2. Repair Item Details Table ───────────────────────────────────────────
+        try:
+            # Confirm Repair Item Details section is present
+            self.wait.until(EC.presence_of_element_located(
+                (By.XPATH, '//table[@id="billing_repair_order_details"]')))
+            print("✅ Repair Item Details section is available")
+
+            # ── Read Amount from Repair Items table ───────────────────────────────
+            repair_amt_ui_str = ""
+            try:
+                repair_amt_ui_str = Function_Call.get_value(
+                    self, '//table[@id="billing_repair_order_details"]//tbody//tr//input[@name="order[amount][]"]')
+            except Exception:
+                pass
+
+            repair_amt_ui = round(float(str(repair_amt_ui_str).replace(',', '').strip() or 0), 2)
+
+            excel_repair_amount = row_data.get("RepairAmount")
+            excel_repair_amt = round(float(str(excel_repair_amount).replace(',', '').strip() or 0), 2)
+
+            # ── Validation 1: UI Amount vs Excel ──────────────────────────────────
+            if repair_amt_ui == excel_repair_amt:
+                print(f"✅ Repair Item UI Amount PASS: {repair_amt_ui} == Excel")
+            else:
+                msg = f"Repair Amount Mismatch: UI={repair_amt_ui} != Excel={excel_repair_amt} ⚠️"
+                print(f"⚠️ {msg}")
+                Function_Call.Remark(self, row_num, msg, sheet_name)
+
+        except Exception as e:
+            msg = f"Repair Item Details section error ⚠️: {e}"
+            print(f"❌ {msg}")
+            Function_Call.Remark(self, row_num, msg, sheet_name)
+
+        # ── Update Grand Total in Excel Billing Sheet (Col 15: Total) ────────────
+        Total = round(calc_total_3 + excel_repair_amt, 2)
+        self.repair_total = Total  # Store for payment handling
+        print(f"✅ Grand Total: {calc_total_3} (Sales) + {excel_repair_amt} (Repair) = {Total}")
+        Function_Call.update_excel_data(self, row_num, 15, Total, sheet_name)
+
     def _generate_pan(self):
         """Generates a random PAN number in standard format [A-Z]{5}[0-9]{4}[A-Z]{1}"""
         return ''.join(random.choices(string.ascii_uppercase, k=5)) + \

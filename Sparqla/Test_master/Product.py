@@ -159,9 +159,9 @@ class Product(unittest.TestCase):
         No_of_pcs.clear()
         No_of_pcs.send_keys(nop)
         
-        if row_data["stocktype"]=="tagged" : 
+        if row_data["stocktype"]=="Tagged" : 
             wait.until(EC.element_to_be_clickable((By.ID,"stock_type1"))).click()
-        elif row_data["stocktype"]=="nontagged" :
+        elif row_data["stocktype"]=="Non tagged" :
             wait.until(EC.element_to_be_clickable((By.ID,"stock_type1"))).click()
         Producttype = row_data["producttype"]
         if Producttype=="Oranments" :
@@ -173,9 +173,10 @@ class Product(unittest.TestCase):
                 stone_id = "stone_type2" 
             wait.until(EC.element_to_be_clickable((By.ID, stone_id))).click()
             wait.until(EC.element_to_be_clickable((By.ID, "select2-size_sel-container"))).click()
-            uom = wait.until(EC.element_to_be_clickable((By.XPATH,"//span[@class='select2-search select2-search--dropdown']/input")))
-            uom.clear()
-            uom.send_keys(row_data["uom"], Keys.ENTER)
+            if row_data["uom"]:
+                uom = wait.until(EC.element_to_be_clickable((By.XPATH,"//span[@class='select2-search select2-search--dropdown']/input")))
+                uom.clear()
+                uom.send_keys(row_data["uom"], Keys.ENTER)
         min = driver.execute_script("return(Math.floor(Math.random()*2))")
         minimum=wait.until(EC.element_to_be_clickable((By.NAME,"product[min_wastage]")))
         minimum.click()

@@ -38,9 +38,7 @@ class ApprovalToInvoice(unittest.TestCase):
                 sleep(1)
                 Function_Call.click(self, "//span[contains(text(), 'Purchase')]")
                 sleep(1)
-                Function_Call.click(self, "//span[contains(text(), 'Pure Weight to Amount Conversion')]")
-                sleep(2)
-                Function_Call.click(self, "//a[contains(@href, '/add')]")
+                Function_Call.click(self, "//span[contains(text(), 'Approval To Invoice Conversion')]")
                 sleep(2)
         except Exception as e:
             print(f"⚠️ Navigation failed: {e}")
@@ -60,21 +58,24 @@ class ApprovalToInvoice(unittest.TestCase):
             workbook = load_workbook(FILE_PATH)
             sheet = workbook[sheet_name]
 
-            # Mapping based on ApprovalToInvoicePrompt.md
+            # Mapping based on seeding in SupplierBillEntry.py
             data_map = {
-                "TestCaseId": 1, "TestStatus": 2, "OpeningBal": 3,
-                "RateCutType": 4, "ConvertTo": 5, "ConvType": 6,
-                "SupplierName": 7, "RefNo": 8, "Metal": 9,
-                "Category": 10, "Product": 11, "PureWeight": 12,
-                "Amount": 13, "Rate": 14, "Remark": 15, "ActualStatus": 16
+                "TestCaseId": 1, "TestStatus": 2, "OpeningBal": 4,
+                "RateCutType": 5, "ConvertTo": 6, "ConvType": 7,
+                "SupplierName": 8, "RefNo": 9, "Metal": 10,
+                "Category": 11, "Product": 12, "PureWeight": 13,
+                "Amount": 14, "Rate": 15, "Remark": 16, "ActualStatus": 17
             }
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
             workbook.close()
 
-            if str(row_data.get("TestStatus")).strip().lower() == "skip":
-                print(f"⏭️ Skipping Test Case: {row_data['TestCaseId']}")
-                continue
+            sleep(2)
+            Function_Call.click(self, "//a[@id='add_Order']")
+
+            # if str(row_data.get("TestStatus")).strip().lower() == "skip":
+            #     print(f"⏭️ Skipping Test Case: {row_data['TestCaseId']}")
+            #     continue
 
             print(f"\n{'='*80}")
             print(f"🧪 Running Test Case: {row_data['TestCaseId']}")
@@ -88,6 +89,9 @@ class ApprovalToInvoice(unittest.TestCase):
                 
                 print(f"🏁 Test Result: {result[0]} - {result[1]}")
                 self._update_excel_status(row_num, result[0], result[1], sheet_name)
+
+                if result[0] == "Pass":
+                    self._seed_approval_rate_fixing(row_num, row_data)
 
             except Exception as e:
                 print(f"❌ Test Case {row_data['TestCaseId']} failed: {e}")
@@ -103,28 +107,42 @@ class ApprovalToInvoice(unittest.TestCase):
             # --- 1. Opening Balance ---
             if row_data.get("OpeningBal") is not None:
                 current_field = "Opening Balance"
-                op_bal_val = str(row_data["OpeningBal"])
+                # Excel stores Yes/No text; radio button @value uses 1/0
+                op_bal_raw = str(row_data["OpeningBal"]).strip().lower()
+                op_bal_val = "1" if op_bal_raw == "yes" else "0"
                 Function_Call.click(self, f"//input[@name='supplier_rate_cut[is_opening_blc]' and @value='{op_bal_val}']")
                 sleep(1)
 
             # --- 2. Rate Cut Type ---
             if row_data.get("RateCutType"):
                 current_field = "Rate Cut Type"
-                rate_cut_val = str(row_data["RateCutType"])
+                # Excel stores text; radio button @value uses 1/2/3
+                _rct_map = {"amount": "1", "pure to amount": "2", "amount to pure": "3"}
+                rate_cut_val = _rct_map.get(str(row_data["RateCutType"]).strip().lower(), str(row_data["RateCutType"]))
                 Function_Call.click(self, f"//input[@name='supplier_rate_cut[rate_cut_type]' and @value='{rate_cut_val}']")
                 sleep(1)
 
             # --- 3. Convert Bill To ---
             if row_data.get("ConvertTo"):
                 current_field = "Convert Bill To"
-                convert_to_val = str(row_data["ConvertTo"])
+                # Excel stores text; radio button @value uses numeric codes
+                _ct_map = {
+                    "supplier"         : "1",
+                    "manufacturer"     : "2",
+                    "stone supplier"   : "3",
+                    "diamond supplier" : "4",
+                    "approval"         : "5",
+                }
+                convert_to_val = _ct_map.get(str(row_data["ConvertTo"]).strip().lower(), str(row_data["ConvertTo"]))
                 Function_Call.click(self, f"//input[@name='supplier_rate_cut[convert_to]' and @value='{convert_to_val}']")
                 sleep(1)
 
             # --- 4. Conversion Type ---
             if row_data.get("ConvType"):
                 current_field = "Conversion Type"
-                conv_type_val = str(row_data["ConvType"])
+                # Excel stores text; radio button @value uses 1/2
+                _conv_map = {"fix": "1", "unfix": "2"}
+                conv_type_val = _conv_map.get(str(row_data["ConvType"]).strip().lower(), str(row_data["ConvType"]))
                 Function_Call.click(self, f"//input[@name='supplier_rate_cut[conversion_type]' and @value='{conv_type_val}']")
                 sleep(1)
 
@@ -139,7 +157,7 @@ class ApprovalToInvoice(unittest.TestCase):
             # --- 6. PO No / Opening Ref No (Select2) ---
             if row_data.get("RefNo"):
                 current_field = "Reference Number (PO/Op)"
-                if str(row_data.get("OpeningBal")) == "1":
+                if str(row_data.get("OpeningBal", "")).strip().lower() == "yes":
                     Function_Call.dropdown_select(self, "//span[@id='select2-opening_ref_no-container']", 
                                                  str(row_data["RefNo"]), 
                                                  '//span[@class="select2-search select2-search--dropdown"]/input')
@@ -172,9 +190,13 @@ class ApprovalToInvoice(unittest.TestCase):
                 sleep(1)
 
             # --- 8. Weights & Rates ---
-            rate_cut_type = str(row_data.get("RateCutType", "2"))
+            # Normalise RateCutType from Excel text → numeric code (same map as radio button)
+            _rct_map = {"amount": "1", "pure to amount": "2", "amount to pure": "3"}
+            _rct_raw = str(row_data.get("RateCutType") or "2").strip()
+            rate_cut_type = _rct_map.get(_rct_raw.lower(), _rct_raw)
+            print("rate_cut_type", rate_cut_type)
             
-            if rate_cut_type == "1": # Amount
+            if rate_cut_type == "1" or rate_cut_type == "3": # Amount
                 if row_data.get("Amount"):
                     current_field = "To Pay Amount"
                     Function_Call.fill_input2(self, "//input[@name='supplier_rate_cut[charges_amount]']", str(row_data["Amount"]))
@@ -196,7 +218,7 @@ class ApprovalToInvoice(unittest.TestCase):
                 Function_Call.fill_input2(self, "//textarea[@name='supplier_rate_cut[src_remark]']", str(row_data["Remark"]))
             
             # Save Button
-            Function_Call.click(self, "//button[@id='submit_rate_cut']")
+            Function_Call.click(self, "//button[@id='supplier_rate_cut_submit']")
             sleep(3)
 
             # Verify response
@@ -237,3 +259,41 @@ class ApprovalToInvoice(unittest.TestCase):
             self.driver.save_screenshot(path)
         except:
             pass
+
+    def _seed_approval_rate_fixing(self, row_num, row_data):
+        """Seed data into ApprovalRateFixing sheet for the next step"""
+        try:
+            workbook = load_workbook(FILE_PATH)
+            if "ApprovalRateFixing" in workbook.sheetnames:
+                rf_sheet = workbook["ApprovalRateFixing"]
+                
+                # Determine next row and numeric part of TC ID
+                last_row = rf_sheet.max_row
+                next_num = 1
+                
+                if last_row > 1:
+                    last_tc_val = str(rf_sheet.cell(row=last_row, column=1).value or "")
+                    # Extract numeric part from strings like 'TC003'
+                    import re
+                    match = re.search(r'\d+', last_tc_val)
+                    if match:
+                        next_num = int(match.group()) + 1
+                    else:
+                        next_num = last_row # Fallback
+                
+                new_tc_id = f"TC{next_num:03d}"
+                next_row = last_row + 1
+                
+                # Col 1: TestCaseId, Col 4: Karigar, Col 6: TotalPureWt, Col 9: GST (Always 3%)
+                rf_sheet.cell(row=next_row, column=1, value=new_tc_id)
+                rf_sheet.cell(row=next_row, column=4, value=row_data.get("SupplierName"))
+                rf_sheet.cell(row=next_row, column=6, value=row_data.get("PureWeight"))
+                rf_sheet.cell(row=next_row, column=9, value=3)
+                
+                workbook.save(FILE_PATH)
+                print(f"✅ Seeded ApprovalRateFixing sheet at Row {next_row} based on sequence: {new_tc_id}")
+            else:
+                print(f"⚠️ Sheet 'ApprovalRateFixing' not found in {FILE_PATH}")
+            workbook.close()
+        except Exception as e:
+            print(f"⚠️ Failed to seed ApprovalRateFixing sheet: {e}")

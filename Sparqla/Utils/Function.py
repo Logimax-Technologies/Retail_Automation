@@ -352,6 +352,14 @@ class Function_Call(unittest.TestCase):
             sheet.cell(row=row_num, column=Col, value=Field_validation_satus).font = Font(bold=True, color="FF8000")
         # Save workbook
         workbook.save(FILE_PATH)
+
+    def update_excel_data(self, row_num, col_num, value, sheet_name):
+        """Generic method to update a specific cell in Excel."""
+        workbook = load_workbook(FILE_PATH)
+        sheet = workbook[sheet_name]
+        sheet.cell(row=row_num, column=col_num, value=value)
+        workbook.save(FILE_PATH)
+        print(f"✅ Updated Excel: {sheet_name} | Row {row_num}, Col {col_num} => {value}")
     
     def alert6(self, Xpath):
         old_html = self.driver.page_source

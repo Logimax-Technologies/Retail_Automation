@@ -32,24 +32,13 @@ class CustomerOrder(unittest.TestCase):
 
     def test_customer_order(self):
         """Main entry point for Customer Order automation."""
-        sheet_name = "Customer"
-        
-        # 1. Navigation
-        try:
-            self.fc.click("//a[@class='sidebar-toggle']")
-            self.fc.click("//span[contains(text(), 'Customer Orders')]")
-            self.fc.click("//span[contains(text(), 'Create Order')]")
-            sleep(2)
-        except Exception as e:
-            print(f"⚠️ Navigation failed: {e}")
-            self.driver.get(BASE_URL + "index.php/admin_ret_customer_order/customer_order/add")
-            sleep(2)
+        sheet_name = "CustomerOrder"
 
-        # 2. Get Initial Data & Rates
+        # 1. Get Initial Data & Rates
         try:
             valid_rows = ExcelUtils.get_valid_rows(FILE_PATH, sheet_name)
             customer_list = ExcelUtils.customer_details(FILE_PATH, sheet_name)
-            tag_count = ExcelUtils.Tag_reserve(FILE_PATH, sheet_name)
+            tag_count = ExcelUtils.Tag_reserve(FILE_PATH, sheet_name,valid_rows)
 
             if tag_count != 0:
                 tags = GetTag.test_gettag(self, tag_count)
@@ -62,6 +51,16 @@ class CustomerOrder(unittest.TestCase):
             print(f"❌ Initialization failed: {e}")
             return
 
+        # 2. Navigation
+        try:
+            self.fc.click("//a[@class='sidebar-toggle']")
+            self.fc.click("//span[contains(text(), 'Customer Orders')]")
+            self.fc.click("//span[contains(text(), 'Create Order')]")
+            sleep(2)
+        except Exception as e:
+            print(f"⚠️ Navigation failed: {e}")
+            self.driver.get(BASE_URL + "index.php/admin_ret_customer_order/customer_order/add")
+            sleep(2)
         # 3. Main Loop
         prev_customer = ''
         

@@ -81,6 +81,9 @@ def create_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
 
+    # Enable performance logging to capture WebSocket/Network frames (for Socket.IO response parsing)
+    options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
+
     driver = webdriver.Chrome(
         service=Service(ChromeDriverManager().install()),
         options=options

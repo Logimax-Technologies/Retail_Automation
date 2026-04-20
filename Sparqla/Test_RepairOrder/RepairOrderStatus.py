@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 from time import sleep
 import unittest
+import re
 
 FILE_PATH = ExcelUtils.file_path
 BASE_URL = ExcelUtils.BASE_URL
@@ -71,7 +72,8 @@ class RepairOrderStatus(unittest.TestCase):
                 "CompletedWeight": 9,
                 "Amount": 10,
                 "Action": 11,
-                "Remark": 12
+                "Remark": 12,
+                "Customer":13
             }
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
@@ -89,6 +91,10 @@ class RepairOrderStatus(unittest.TestCase):
                 result = self.test_status_flow(row_data, row_num, sheet_name)
                 print(f"🏁 Test Result: {result[0]} - {result[1]}")
                 self._update_excel_status(row_num, result[0], result[1], sheet_name)
+                
+                # Auto-sync to Billing sheet on Pass
+                if result[0] == "Pass":
+                    self._update_billing_sheet(row_data)
             except Exception as e:
                 err_msg = str(e)
                 print(f"❌ Test Failed Exception: {err_msg}")
@@ -293,6 +299,48 @@ class RepairOrderStatus(unittest.TestCase):
 
         except Exception as e:
             return ("Fail", f"Error in {current_field}: {str(e)}")
+
+    def _update_billing_sheet(self, row_data):
+        """Automatically appends Repair Order details to the Billing sheet for delivery."""
+        try:
+            workbook = load_workbook(FILE_PATH)
+            if "Billing" not in workbook.sheetnames:
+                print("⚠️ 'Billing' sheet not found in workbook.")
+                return
+            
+            sheet = workbook["Billing"]
+            next_row = sheet.max_row + 1
+            
+            # Generate sequential Test Case ID (from TC001, TC002...) based on previous row
+            last_id = sheet.cell(row=next_row - 1, column=1).value
+            new_tc_id = "TC001"
+            if last_id and isinstance(last_id, str):
+                match = re.search(r"(\d+)", last_id)
+                if match:
+                    num_str = match.group(0)
+                    new_num = int(num_str) + 1
+                    new_tc_id = last_id.replace(num_str, str(new_num).zfill(len(num_str)))
+            
+            print(f"🔄 Next sequential ID generated: {new_tc_id} for Row {next_row}")
+
+            # Mapping as per USER request
+            sheet.cell(row=next_row, column=1, value=new_tc_id)                       # Col 1: Incremented TC Id
+            sheet.cell(row=next_row, column=2, value="run")                          # Col 2: TestStatus (set to run)
+            sheet.cell(row=next_row, column=4, value=row_data.get("Branch"))        # Col 4: Cost Centre
+            sheet.cell(row=next_row, column=5, value="Customer")                     # Col 5: Billing To
+            sheet.cell(row=next_row, column=6, value="111-Developer Logimax")        # Col 6: Employee
+            sheet.cell(row=next_row, column=7, value=row_data.get("Customer"))      # Col 7: Customer Number
+            sheet.cell(row=next_row, column=9, value="Show Room")                    # Col 9: Delivery Location
+            sheet.cell(row=next_row, column=10, value="Repair Order Delivery")       # Col 10: Bill Type
+            sheet.cell(row=next_row, column=11, value="No")                          # Col 11: driect
+            sheet.cell(row=next_row, column=31, value=row_data.get("OrderNo"))       # Col 31: OrderNo
+            sheet.cell(row=next_row, column=34, value=row_data.get("Amount"))        # Col 34: RepairAmount
+            
+            workbook.save(FILE_PATH)
+            print(f"✅ Successfully synced Order {row_data.get('OrderNo')} to Billing sheet (Row {next_row})")
+            
+        except Exception as e:
+            print(f"⚠️ Billing sheet sync failed: {e}")
 
     def _update_excel_status(self, row_num, status, message, sheet_name):
         try:

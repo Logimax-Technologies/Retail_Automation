@@ -468,29 +468,31 @@ class GRNEntry(unittest.TestCase):
                     print(f"✅ Entered Wastage items {row_index}: {data['Wastage']}")
 
             # ── Rate Per Gram (MANDATORY) ──
-            if data["RatePerGram"]:
-                current_field = f"Rate Per Gram ({data['RatePerGram']})"
-                Data = Function_Call.fill_input(
-                    self, wait,
-                    locator=(By.XPATH, f'(//input[@name="item[rate_per_gram][]"])[{row_index}]'),
-                    value=str(data["RatePerGram"]),
-                    field_name="RatePerGram",
-                    row_num=row_num,
-                    pattern=r"^\d+(\.\d{1,2})?$",
-                    screenshot_prefix="RatePerGram",
-                    Sheet_name=sheet_name
-                )
-                print(Data)
-                if "Fail" in str(Data):
+            if data['GRNType']in'Bill':
+                if data["RatePerGram"]:
+                    current_field = f"Rate Per Gram ({data['RatePerGram']})"
+                    Data = Function_Call.fill_input(
+                        self, wait,
+                        locator=(By.XPATH, f'(//input[@name="item[rate_per_gram][]"])[{row_index}]'),
+                        value=str(data["RatePerGram"]),
+                        field_name="RatePerGram",
+                        row_num=row_num,
+                        pattern=r"^\d+(\.\d{1,2})?$",
+                        screenshot_prefix="RatePerGram",
+                        Sheet_name=sheet_name
+                    )
+                    print(Data)
+                    if "Fail" in str(Data):
+                        self._cancel_form()
+                        return Data
+                    print(f"✅ Entered Rate Per Gram items {row_index}: {data['RatePerGram']}")
+                else:
+                    msg = "Rate Per Gram is mandatory ⚠️"
+                    self._take_screenshot(f"MissingField_RatePerGram_TC{row_data['TestCaseId']}")
+                    Function_Call.Remark(self, row_num, msg, sheet_name)
                     self._cancel_form()
-                    return Data
-                print(f"✅ Entered Rate Per Gram items {row_index}: {data['RatePerGram']}")
-            else:
-                msg = "Rate Per Gram is mandatory ⚠️"
-                self._take_screenshot(f"MissingField_RatePerGram_TC{row_data['TestCaseId']}")
-                Function_Call.Remark(self, row_num, msg, sheet_name)
-                self._cancel_form()
-                return ("Fail", msg)
+                    return ("Fail", msg)
+            
 
             # ── Rate Type (MANDATORY: Grm=1, Pcs=2) ──
             if data["RateType"]:

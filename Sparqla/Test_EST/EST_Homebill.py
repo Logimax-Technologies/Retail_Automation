@@ -71,7 +71,6 @@ class ESTIMATION_Homebill(unittest.TestCase):
                     ceil_value,Test_Status,Actual_Status= Create_data
                     ESTIMATION_Homebill.update_excel_status(self,row_num, Test_Status, Actual_Status, Sheet_name)                    
                     salevalue = salevalue + float(ceil_value) 
-                    row=row+1 # Increment for next row in web table                  
         return salevalue 
                 
     def create(self,row_data, row_num, Sheet_name, row, Board_Rate):

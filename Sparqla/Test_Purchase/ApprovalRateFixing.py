@@ -64,17 +64,15 @@ class ApprovalRateFixing(unittest.TestCase):
             # Column mapping based on prompt
             data_map = {
                 "TestCaseId": 1, "TestStatus": 2, "ActualStatus": 3,
-                "Karigar": 4, "ApprovalRatefixNo": 5,
-                "FixWt": 6, "RateExclTax": 7, "GSTPercent": 8,
-                "Remark": 9, "ExpectedTaxable": 10, "ExpectedPayable": 11,
-                "CancelReason": 12, "ExpectedStatus": 13, "CapturedRateFixId": 14
+                "Karigar": 4, "PORefNo": 5, "TotalPureWt":6, "FixWt":7, 
+                "RateExclTax":8, "GSTPercent":9,"CapturedRateFixId":10,"Remark":11
             }
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
 
-            if str(row_data["TestStatus"]).strip().lower() == "skip":
-                print(f"⏭️ Skipping Test Case: {row_data['TestCaseId']}")
-                continue
+            # if str(row_data["TestStatus"]).strip().lower() == "skip":
+            #     print(f"⏭️ Skipping Test Case: {row_data['TestCaseId']}")
+            #     continue
 
             print(f"\n{'='*80}")
             print(f"🧪 Running Test Case: {row_data['TestCaseId']}")
@@ -148,19 +146,19 @@ class ApprovalRateFixing(unittest.TestCase):
                 return ("Fail", msg)
 
             # ── Select Approval Ratefix No (Select2) ──
-            if row_data["ApprovalRatefixNo"]:
-                current_field = f"Approval Ratefix No ({row_data['ApprovalRatefixNo']})"
+            if row_data["PORefNo"]:
+                current_field = f"Approval Ratefix No ({row_data['PORefNo']})"
                 Function_Call.dropdown_select(
                     self,
                     '//select[@id="select_approval_ref_no"]/following-sibling::span',
-                    str(row_data["ApprovalRatefixNo"]),
+                    str(row_data["PORefNo"]),
                     '//span[@class="select2-search select2-search--dropdown"]/input'
                 )
                 sleep(2)
-                print(f"✅ Selected Approval Ratefix No: {row_data['ApprovalRatefixNo']}")
+                print(f"✅ Selected Approval Ratefix No: {row_data['PORefNo']}")
             else:
-                msg = "ApprovalRatefixNo is mandatory ⚠️"
-                self._take_screenshot(f"MissingField_ApprovalRatefixNo_TC{row_data['TestCaseId']}")
+                msg = "PORefNo is mandatory ⚠️"
+                self._take_screenshot(f"MissingField_PORefNo_TC{row_data['TestCaseId']}")
                 Function_Call.Remark(self, row_num, msg, sheet_name)
                 return ("Fail", msg)
 

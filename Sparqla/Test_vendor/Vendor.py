@@ -135,8 +135,7 @@ class VendorRegistration(unittest.TestCase):
                     range_check=lambda v: 0 <= float(v) <= 100,
                     row_num=row_num,
                     Sheet_name=Sheet_name)
-                Error_field_val.extend(errors)
-                print(Error_field_val)
+                
             else:
                 msg = f"'{None}' → TCS% field is mandatory ⚠️"
                 Mandatory_field.append("TCS%"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
@@ -168,8 +167,7 @@ class VendorRegistration(unittest.TestCase):
                     range_check=lambda v: 0 <= float(v) <= 100,
                     row_num=row_num,
                     Sheet_name=Sheet_name)
-                Error_field_val.extend(errors)
-                print(Error_field_val)
+                
             else:
                 msg = f"'{None}' → TDS% field is mandatory ⚠️"
                 Mandatory_field.append("TDS%"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name) 
@@ -191,14 +189,13 @@ class VendorRegistration(unittest.TestCase):
                 screenshot_prefix="firstName",
                 row_num=row_num,
                 Sheet_name=Sheet_name)
-            Error_field_val.extend(errors)
-            print(Error_field_val)
+           
         else:
             msg = f"'{None}' → firstName field is mandatory ⚠️"
             Mandatory_field.append("firstName"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
        
         #lastName
-        errors=Function_Call.fill_input(
+        Function_Call.fill_input(
         self, wait,
         locator=(By.XPATH, '//*[@id="last_name_karigar"]'),
         value=row_data["lastName"],
@@ -208,13 +205,12 @@ class VendorRegistration(unittest.TestCase):
         screenshot_prefix="lastName",
         row_num=row_num,
         Sheet_name=Sheet_name)
-        Error_field_val.extend(errors)
-        print(Error_field_val)
+        
         
         if row_data["userType"]=="company": 
             #company
             if row_data["companyName"] is not None:
-                errors=Function_Call.fill_input(
+                Function_Call.fill_input(
                     self, wait,
                     locator=(By.XPATH, '//*[@id="company_karigar"]'),
                     value=row_data["companyName"],
@@ -223,15 +219,14 @@ class VendorRegistration(unittest.TestCase):
                     screenshot_prefix="companyName",
                     row_num=row_num,
                     Sheet_name=Sheet_name)
-                Error_field_val.extend(errors)
-                print(Error_field_val)
+                
             else:
                 msg = f"'{None}' → companyName field is mandatory ⚠️"
                 Mandatory_field.append("companyName"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
     
             #gstNumber
             if row_data["gstNumber"] is not None:    
-                errors=Function_Call.fill_input(
+                Function_Call.fill_input(
                     self, wait,
                     locator=(By.XPATH, '//*[@id="gst_number_karigar"]'),
                     value=row_data["gstNumber"],
@@ -240,8 +235,7 @@ class VendorRegistration(unittest.TestCase):
                     screenshot_prefix="gstNumber",
                     row_num=row_num,
                     Sheet_name=Sheet_name)
-                Error_field_val.extend(errors)
-                print(Error_field_val)
+                
             else:
                 msg = f"'{None}' → gstNumber field is mandatory ⚠️"
                 Mandatory_field.append("gstNumber"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
@@ -260,8 +254,7 @@ class VendorRegistration(unittest.TestCase):
                 row_num=row_num,
                 extra_keys = (Keys.SHIFT,Keys.TAB),
                 Sheet_name=Sheet_name)
-            Error_field_val.extend(errors)
-            print(Error_field_val)
+            
         else:
             msg = f"'{None}' → mobileNumber field is mandatory ⚠️"
             Mandatory_field.append("mobileNumber"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
@@ -280,8 +273,7 @@ class VendorRegistration(unittest.TestCase):
                 row_num=row_num,
                 extra_keys = Keys.TAB,
                 Sheet_name=Sheet_name)
-            Error_field_val.extend(errors)
-            print(Error_field_val)
+            
         else:
             msg = f"'{None}' → email field is mandatory ⚠️"
             Mandatory_field.append("email"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
@@ -319,8 +311,7 @@ class VendorRegistration(unittest.TestCase):
                 screenshot_prefix="address1",
                 row_num=row_num,
                 Sheet_name=Sheet_name)
-            Error_field_val.extend(errors)
-            print(Error_field_val)
+            
         else:
             msg = f"'{None}' → address1 field is mandatory ⚠️"
             Mandatory_field.append("address1"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)

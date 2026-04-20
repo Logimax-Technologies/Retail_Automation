@@ -63,8 +63,7 @@ class RateFixGSTPurchase(unittest.TestCase):
                 "TestCaseId": 1, "TestStatus": 2, "ActualStatus": 3,
                 "Karigar": 4, "FinancialYear": 5, "PORefNo": 6,
                 "FixWt": 7, "RateExclTax": 8, "GSTPercent": 9,
-                "Remark": 10, "ExpectedTaxable": 11, "ExpectedPayable": 12,
-                "CancelReason": 13, "ExpectedStatus": 14, "CapturedRateFixId": 15
+                 "CapturedRateFixId": 10
             }
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}

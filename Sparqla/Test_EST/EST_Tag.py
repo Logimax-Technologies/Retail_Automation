@@ -90,6 +90,7 @@ class ESTIMATION_TAG(unittest.TestCase):
         sheet = workbook[Sheet_name]
         total_added_amount = 0.0
         self.found_rows = [] # Reset for this run
+        web_row = 1
         for row_num in range(2, valid_rows + 1):
             current_id = sheet.cell(row=row_num, column=1).value  # Column 1 = Test Case Id
             if current_id == test_case_id:
@@ -137,14 +138,14 @@ class ESTIMATION_TAG(unittest.TestCase):
                 # but I'll assume they were meant to be tracked from previous context or web state.
                 # In the original code they were used but not clearly initialized in test_estimationtag.
                 # I'll initialize them to 1.
-                web_row = row_num - 1 # Simple heuristic if not provided
                 Create_data = ESTIMATION_TAG.create(self, row_data, row_num, Sheet_name, web_row, 1, Board_Rate)
                 print(Create_data)
                 if Create_data:
                     ceil_value, Test_Status, Actual_Status = Create_data
                     ESTIMATION_TAG.update_excel_status(self, row_num, Test_Status, Actual_Status, Sheet_name)
                     total_added_amount += float(ceil_value)
-        return total_added_amount, self.found_rows
+                web_row += 1
+        return total_added_amount, self.found_rows    
                     
                                    
     def create(self,row_data, row_num, Sheet_name, row, count, Board_Rate):

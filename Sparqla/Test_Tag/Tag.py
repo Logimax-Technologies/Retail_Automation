@@ -38,13 +38,16 @@ class Tag(unittest.TestCase):
         rate_text1 = wait.until(EC.presence_of_element_located((By.XPATH, "//li[@class='user-body rate_block_body']//tr[th[contains(text(),'Gold 22KT 1gm')]]/td"))).text
         rate_text2 = wait.until(EC.presence_of_element_located((By.XPATH, "//li[@class='user-body rate_block_body']//tr[th[contains(text(),'Gold 18KT 1gm')]]/td"))).text
         rate_text3 = wait.until(EC.presence_of_element_located((By.XPATH, "//li[@class='user-body rate_block_body']//tr[th[contains(text(),'Silver 1gm')]]/td"))).text
+        rate_text4 = wait.until(EC.presence_of_element_located((By.XPATH, "//li[@class='user-body rate_block_body']//tr[th[contains(text(),'Gold 24KT 1gm')]]/td"))).text
         # Example: "INR 9500"
         gold_rate22KT = int(float(rate_text1.replace("INR", "").strip()))
         print(gold_rate22KT)  
         gold_rate18KT = int(float(rate_text2.replace("INR", "").strip()))
         print(gold_rate18KT)  
         Silver_rate = int(float(rate_text3.replace("INR", "").strip()))
-        print(Silver_rate)  
+        print(Silver_rate) 
+        gold_rate24KT = int(float(rate_text4.replace("INR", "").strip()))
+        print(gold_rate24KT)  
         function_name = Sheet_name
         valid_rows = ExcelUtils.get_valid_rows(FILE_PATH, function_name)
         workbook = load_workbook(FILE_PATH)
@@ -126,7 +129,6 @@ class Tag(unittest.TestCase):
                 Lot_NO=row_data["Lot No"]
                 LOT = wait.until(EC.element_to_be_clickable((By.XPATH, f"//li[normalize-space()='{Lot_NO}']")))
                 LOT.click()
-                print(Lot_No)
                 previous_branch = row_data["Branch"]
                 sleep(2)
             if  Current_Product !=  before_Product: 
@@ -244,7 +246,8 @@ class Tag(unittest.TestCase):
             sleep(2)
             test_case_id =row_data["Test Case Id"]
             if row_data["Less Weight"]=="Yes":
-                wait.until(EC.element_to_be_clickable((By.XPATH,"//form[@id='tag_form']/div/div/div[2]/div/div/div[8]/div[2]/div/div/span"))).click()
+                sleep(3)
+                Function_Call.click(self,'//form[@id="tag_form"]/div/div/div[2]/div/div/div[8]/div[2]/div/div/span')
                 Sheet_name='Tag_LWt'
                 LessWeight=Tag_Stone.test_tagStone(self,Sheet_name,test_case_id)
                 print(LessWeight)
@@ -271,6 +274,7 @@ class Tag(unittest.TestCase):
             sleep(3)
             
             if row_data["MC&VA Available"]=="No":
+                wait.until(EC.element_to_be_clickable((By.XPATH,"//input[@id='tag_wast_perc']"))).clear()
                 wait.until(EC.element_to_be_clickable((By.XPATH,"//input[@id='tag_wast_perc']"))).send_keys(row_data["Wastage%"])
             
             else:
@@ -281,7 +285,8 @@ class Tag(unittest.TestCase):
                 McType=wait.until(EC.element_to_be_clickable((By.XPATH,'//select[@id="tag_id_mc_type"]')))
                 McType.click()
                 Select(McType).select_by_visible_text(row_data["Mc Type"])
-                wait.until(EC.element_to_be_clickable((By.XPATH,"//input[@id='tag_mc_value']"))).send_keys(row_data["MC"])
+            wait.until(EC.element_to_be_clickable((By.XPATH,"//input[@id='tag_mc_value']"))).clear()    
+            wait.until(EC.element_to_be_clickable((By.XPATH,"//input[@id='tag_mc_value']"))).send_keys(row_data["MC"])
             
             if row_data["Size"]:
                 wait.until(EC.element_to_be_clickable((By.ID,"select2-tag_size-container"))).click()
@@ -301,31 +306,41 @@ class Tag(unittest.TestCase):
                 selected_text = select.first_selected_option.text
                 print("Calc Type selected ->", selected_text)   # e.g. "Mc & Wast On Gross"
                 CalculationType=selected_text
-                
-               
 
-            metal_text = wait.until(
-                EC.presence_of_element_located((By.XPATH, "//*[@id='lt_metal']"))
-            ).text
-
-            Board_rate = 0
-            print("Metal:", metal_text)
-            if '75.0000' in metal_text:
-                Board_rate=gold_rate18KT
-            elif '916.0000' in metal_text or '91.6000' in metal_text:
-                Board_rate=gold_rate22KT
-            elif '92.5000' in metal_text:
-                Board_rate=Silver_rate
+            if  CalculationType in 'MRP' or 'Fixed Rate based on Weight' in CalculationType:   
+                if row_data["Rate / MRP"] != None:
+                    wait.until(EC.element_to_be_clickable((By.ID,"tag_sell_rate"))).click()
+                    wait.until(EC.visibility_of_element_located((By.ID,"tag_sell_rate"))).send_keys(row_data["Rate / MRP"])
+                    value = "{:.2f}".format(float(row_data["Rate / MRP"]))
+                    print(f'rate{value}')
+                 
             else:
-                print(f"⚠️ Unrecognized metal type: {metal_text}. Using default rate.")
-                Board_rate = gold_rate22KT # Default fallback
+                metal_text = wait.until(
+                    EC.presence_of_element_located((By.XPATH, "//*[@id='lt_metal']"))
+                ).text
+
+                Board_rate = 0
+                print("Metal:", metal_text)
+                if 'GOLD' in metal_text:
+                    if '75.0000' in metal_text:
+                        Board_rate=gold_rate18KT
+                    elif '80.0000' in metal_text or '91.6000' in metal_text:
+                        Board_rate=gold_rate22KT
+                    elif '100.0000' in metal_text or'999.0000' in metal_text:
+                        Board_rate=gold_rate24KT
+                elif 'SILVER' in metal_text:
+                    if '92.5000' in metal_text or '91.6000' in metal_text or'999.0000' in metal_text or '100.0000' in metal_text or '80.0000' in metal_text:
+                        Board_rate=Silver_rate
+                else:
+                    print(f"⚠️ Unrecognized metal type: {metal_text}. Using default rate.")
+                    Board_rate = gold_rate22KT # Default fallback
+
+                        
                     
-                
-            value = Tag.calculation(self,row_data,CalculationType,TotalAmount,Wt_gram,OtherMetalAmount,Board_rate)
-            print(value)
-            
-            value = "{:.2f}".format(float(value))
-            print(f'rate{value}')
+                value = Tag.calculation(self,row_data,CalculationType,TotalAmount,Wt_gram,OtherMetalAmount,Board_rate)
+                print(value)
+                value = "{:.2f}".format(float(value))
+                print(f'rate{value}')
             HUID1=(row_data["HUID1"])
             print(type(HUID1))
             if HUID1 != None:
@@ -355,11 +370,7 @@ class Tag(unittest.TestCase):
             else:
                 print("There is no Attribute")
                 
-            if row_data["Rate / MRP"] != None:
-                wait.until(EC.element_to_be_clickable((By.ID,"tag_sell_rate"))).click()
-                wait.until(EC.visibility_of_element_located((By.ID,"tag_sell_rate"))).send_keys(row_data["Rate / MRP"])
-            else:
-                print("There is no Rate / MRP")    
+                
             if row_data["Certification"] == "Yes":
                 wait.until(EC.element_to_be_clickable((By.ID,"cert_no"))).click()
                 wait.until(EC.visibility_of_element_located((By.ID,"cert_no"))).send_keys(row_data["Certification No"])
@@ -492,16 +503,16 @@ class Tag(unittest.TestCase):
         wait = self.wait 
         Nwt_val = wait.until(EC.presence_of_element_located((By.ID,"tag_nwt")))# TAG weight taken form UI
         Nwt = Nwt_val.get_attribute("value")
-        Nwt=float(Nwt)
+        Nwt = float(Nwt) if Nwt and Nwt.strip() else 0.0
         print(Nwt)
         
         Wast_val = wait.until(EC.presence_of_element_located((By.ID,"tag_wast_perc")))# Wastage % taken form UI
         Wast = Wast_val.get_attribute("value")
-        Wast=float(Wast) 
+        Wast = float(Wast) if Wast and Wast.strip() else 0.0
         
         Mc_val = wait.until(EC.presence_of_element_located((By.ID,"tag_mc_value")))# Macking Cost value teken form UI
         Mc = Mc_val.get_attribute("value")
-        Mc=float(Mc)  
+        Mc = float(Mc) if Mc and Mc.strip() else 0.0
         
         Mc_type_val = wait.until(EC.presence_of_element_located((By.ID,'tag_id_mc_type')))
         Mc_type = Mc_type_val.get_attribute("value")# Macking Cost value teken form UI
@@ -516,6 +527,7 @@ class Tag(unittest.TestCase):
         wastage_percentage = Wast 
         Making_cost_pergram = Mc 
         diamond_cost =float(TotalAmount)
+        ceil_value = "0.00"
         
         if CalculationType=="Mc on Gross,Wast On Net":
            # calculation making cost on gross Wastage% on Net  
@@ -576,8 +588,8 @@ class Tag(unittest.TestCase):
             cal3 = total*Board_rate+mc+diamond_cost
             ceil_value=("{:.2f}".format(math.ceil(cal3)))
         
-        # if row_data["Calc Type"] == "Fixed Rate":
-            # ceil_value   
+        if row_data["Calc Type"] == "Fixed Rate":
+            ceil_value   
           
         if float(OtherMetalAmount or 0) > 0:
            Total =float(ceil_value) + float(OtherMetalAmount)
