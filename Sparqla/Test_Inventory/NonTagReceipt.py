@@ -76,9 +76,9 @@ class NonTagReceipt(unittest.TestCase):
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
             
             # Check if test should run
-            # if str(row_data["TestStatus"]).strip().lower() != "yes":
-            #     print(f"⏭️ Skipping Test Case {row_data['TestCaseId']} (TestStatus != 'Yes')")
-            #     continue
+            if str(row_data["TestStatus"]).strip().lower() != "run":
+                print(f"⏭️ Skipping Test Case {row_data['TestCaseId']} (TestStatus != 'run')")
+                continue
             
             print(f"\n{'='*80}")
             print(f"🧪 Running Test Case: {row_data['TestCaseId']}")
@@ -92,6 +92,7 @@ class NonTagReceipt(unittest.TestCase):
                 
                 # If save successful, verify in list page and capture receipt no
                 receipt_no = ""
+                packet_no  = ""
                 if test_status == "Pass":
                     print(f"🔍 Verifying entry in List Page...")
                     list_result = self.test_nontag_receipt_list_verification(row_data)
@@ -99,11 +100,16 @@ class NonTagReceipt(unittest.TestCase):
                     
                     if list_result[0] == "Pass" and len(list_result) > 2:
                         receipt_no = list_result[2]
+                        packet_no  = list_result[3] if len(list_result) > 3 else ""
                         # Combine messages for clarity or update to the verification status
                         actual_status = f"{actual_status} | {list_result[1]}"
                 
                 # Single update call at the end
-                self._update_excel_status(row_num, test_status, actual_status, sheet_name, receipt_no=receipt_no)
+                self._update_excel_status(row_num, test_status, actual_status, sheet_name, receipt_no=receipt_no, packet_no=packet_no)
+                
+                # Update BranchTransfer sheet on success
+                if test_status == "Pass" and (receipt_no or packet_no):
+                    self._update_BranchTransfer(row_data, receipt_no, packet_no)
                     
             except Exception as e:
                 print(f"❌ Test Case {row_data['TestCaseId']} failed with exception: {e}")
@@ -286,8 +292,15 @@ class NonTagReceipt(unittest.TestCase):
                 
                 # Extract Receipt No from Column 2
                 receipt_no = row_element.find_element(By.XPATH, "./td[2]").text.strip()
-                print(f"✅ Found Lot {row_data['LotNo']} in list page. Receipt No: {receipt_no}")
-                return ("Pass", f"Verified Lot {row_data['LotNo']} in list", receipt_no)
+                
+                # Extract Packet No from Column 10
+                try:
+                    packet_no = row_element.find_element(By.XPATH, "./td[10]").text.strip()
+                except:
+                    packet_no = ""
+                
+                print(f"✅ Found Lot {row_data['LotNo']} in list page. Receipt No: {receipt_no} | Packet No: {packet_no}")
+                return ("Pass", f"Verified Lot {row_data['LotNo']} in list", receipt_no, packet_no)
             except:
                 print(f"❌ Could not find Lot {row_data['LotNo']} in list page after search")
                 return ("Fail", f"Lot {row_data['LotNo']} not found in list")
@@ -295,7 +308,7 @@ class NonTagReceipt(unittest.TestCase):
         except Exception as e:
             return ("Fail", f"List verification error: {str(e)}")
 
-    def _update_excel_status(self, row_num, test_status, actual_status, sheet_name, receipt_no=""):
+    def _update_excel_status(self, row_num, test_status, actual_status, sheet_name, receipt_no="", packet_no=""):
         """Utility to write results back to Excel"""
         try:
             workbook = load_workbook(FILE_PATH)
@@ -309,10 +322,59 @@ class NonTagReceipt(unittest.TestCase):
             if receipt_no:
                 sheet.cell(row=row_num, column=15, value=receipt_no).font = Font(bold=True, color="0000FF")
             
+            # Update Packet No in Column 16
+            if packet_no:
+                sheet.cell(row=row_num, column=16, value=packet_no).font = Font(bold=True, color="0000FF")
+                print(f"📦 Packet No '{packet_no}' written to col 16, row {row_num}")
+            
             workbook.save(FILE_PATH)
             workbook.close()
         except Exception as e:
             print(f"⚠️ Excel update error: {e}")
+
+    def _update_BranchTransfer(self, row_data, receipt_no, packet_no):
+        """
+        Updates BranchTransfer sheet after a successful Non-Tag Receipt.
+        Col 1  : TestCaseId  (auto-generated TC_BT_001, 002, …)
+        Col 4  : TransferType = 'NonTagged'  (default)
+        Col 5  : FromBranch  = 'HEAD OFFICE' (default)
+        Col 7  : OtherIssue  = 'No'          (default)
+        Col 15 : NT_Receipt  = packet_no (if available) else receipt_no
+        """
+        try:
+            workbook = load_workbook(FILE_PATH)
+
+            if "BranchTransfer" not in workbook.sheetnames:
+                print("⚠️ BranchTransfer sheet not found — skipping update")
+                workbook.close()
+                return
+
+            bt_sheet = workbook["BranchTransfer"]
+
+            # Find first empty row (sequential after last filled row)
+            target_row = 2
+            while bt_sheet.cell(row=target_row, column=1).value is not None:
+                target_row += 1
+
+            test_case_id = f"TC_BT_{target_row - 1:03d}"
+
+            # NT_Receipt: prefer packet_no; fall back to receipt_no
+            nt_receipt_val = packet_no if packet_no else receipt_no
+
+            print(f"📊 Updating BranchTransfer row {target_row}: {test_case_id} | NT_Receipt={nt_receipt_val}")
+
+            bt_sheet.cell(row=target_row, column=1).value  = test_case_id
+            bt_sheet.cell(row=target_row, column=4).value  = "NonTagged"
+            bt_sheet.cell(row=target_row, column=5).value  = "HEAD OFFICE"
+            bt_sheet.cell(row=target_row, column=7).value  = "No"
+            bt_sheet.cell(row=target_row, column=15).value = nt_receipt_val
+
+            workbook.save(FILE_PATH)
+            workbook.close()
+            print(f"✅ BranchTransfer row {target_row} written: {test_case_id} | NT_Receipt={nt_receipt_val}")
+
+        except Exception as e:
+            print(f"⚠️ BranchTransfer update error: {e}")
 
     def _take_screenshot(self, name):
         """Utility to take screenshots"""

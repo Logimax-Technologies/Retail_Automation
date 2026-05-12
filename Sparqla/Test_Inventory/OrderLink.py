@@ -121,12 +121,12 @@ class OrderLink(unittest.TestCase):
                 sleep(1)
 
             # 2. Select Financial Year
-            fin_year = str(row_data.get("FinYear", "")).strip()
-            if fin_year:
-                current_field = "FinYear"
-                fin_select_el = wait.until(EC.presence_of_element_located((By.XPATH, '//select[@id="order_fin_year_select"]')))
-                Select(fin_select_el).select_by_visible_text(fin_year)
-                sleep(1)
+            # fin_year = str(row_data.get("FinYear", "")).strip()
+            # if fin_year:
+            #     current_field = "FinYear"
+            #     fin_select_el = wait.until(EC.presence_of_element_located((By.XPATH, '//select[@id="order_fin_year_select"]')))
+            #     Select(fin_select_el).select_by_visible_text(fin_year)
+            #     sleep(1)
 
             # 3. Search and Select Order
             order_no = str(row_data.get("OrderNo", "")).strip()
@@ -441,11 +441,12 @@ class OrderLink(unittest.TestCase):
                 7: customer_mobile,
                 9: "Show Room",
                 10: "ORDER DELIVERY",
-                11: "No"
+                11: "No",
+                32:row_data.get("OrderNo")
             }
             for col, value in mappings.items():
                 if value is not None:
-                    sh.cell(row=next_row, column=col, value=value).font = Font(bold=True)
+                    sh.cell(row=next_row, column=col, value=value)
 
             wb.save(FILE_PATH)
             wb.close()

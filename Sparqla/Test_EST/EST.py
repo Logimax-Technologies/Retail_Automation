@@ -4,6 +4,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from time import  sleep
 import unittest
+from openpyxl import load_workbook
 from Utils.Excel import ExcelUtils
 from Utils.Function import Function_Call
 from Test_EST.EST_Tag import ESTIMATION_TAG
@@ -150,7 +151,26 @@ class ESTIMATION(unittest.TestCase):
             Call_Tag, tag_found_rows = ESTIMATION_TAG.test_estimationtag(self,test_case_id,Board_Rate)     
             print(Call_Tag)
             Total_amount.append(Call_Tag)
-            bill_type.append("SALES")
+            
+            is_order_delivery = False
+            try:
+                wb = load_workbook(ExcelUtils.file_path)
+                if 'Tag_EST' in wb.sheetnames:
+                    sh = wb['Tag_EST']
+                    for r in range(2, sh.max_row + 1):
+                        if sh.cell(row=r, column=1).value == test_case_id:
+                            if sh.cell(row=r, column=17).value:  # CustomerorderNo
+                                is_order_delivery = True
+                                break
+                wb.close()
+            except Exception as e:
+                print(f"Error checking CustomerorderNo: {e}")
+                
+            if is_order_delivery:
+                bill_type.append("ORDER DELIVERY")
+            else:
+                bill_type.append("SALES")
+                
             No=1
             Row_No=Row_No+1
         if row_data["Estimation Non-Tag"]=="Yes":

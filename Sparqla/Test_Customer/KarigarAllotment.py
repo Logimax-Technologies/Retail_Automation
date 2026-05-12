@@ -60,9 +60,9 @@ class CustomerOrderKarigarAllotment(unittest.TestCase):
                 continue
 
             data_map = {
-                "TestCaseId": 1, "TestStatus": 2, "ActualStatus": 3,
-                "OrderNo": 4, "AssignTo": 5, "AssignName": 6,
-                "SmithDueDate": 7, "Action": 8, "Remark": 9
+                "TestCaseId": 1, "TestStatus": 2, "ActualStatus": 3,"Branch":4,
+                "OrderNo": 5, "AssignTo": 6, "AssignName": 7,
+                "SmithDueDate": 8, "Action": 9, "Remark": 10
             }
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
@@ -83,6 +83,7 @@ class CustomerOrderKarigarAllotment(unittest.TestCase):
         driver = self.driver
         wait = self.wait
         
+        branch = str(row_data["Branch"]) if row_data.get("Branch") else None
         order_no = str(row_data["OrderNo"]) if row_data.get("OrderNo") else None
         assign_to = str(row_data["AssignTo"]).strip().lower() if row_data.get("AssignTo") else ""
         assign_name = str(row_data["AssignName"]) if row_data.get("AssignName") else None
@@ -91,6 +92,17 @@ class CustomerOrderKarigarAllotment(unittest.TestCase):
 
         if not order_no:
             return ("Fail", "OrderNo is required")
+
+        # if branch
+        if branch:
+            self.fc.dropdown_select("//span[@id='select2-branch_filter-container']", branch, "//span[@class='select2-search select2-search--dropdown']/input")
+            sleep(1)
+            self.fc.click("//button[@id='search_new_order_list']")
+            sleep(1)
+        else:
+            print("Branch is required")
+            return ("Fail", "Branch is required")
+           
 
         # 1. Search Order
         search_box = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='search']")))

@@ -61,14 +61,14 @@ class RateFixGSTPurchase(unittest.TestCase):
             # Column mapping
             data_map = {
                 "TestCaseId": 1, "TestStatus": 2, "ActualStatus": 3,
-                "Karigar": 4, "FinancialYear": 5, "PORefNo": 6,
-                "FixWt": 7, "RateExclTax": 8, "GSTPercent": 9,
-                 "CapturedRateFixId": 10
+                "Karigar": 4, "FinancialYear": 5, "PORefNo": 6, "TotalPureWt":7,
+                "FixWt": 8, "RateExclTax": 9, "GSTPercent": 10,
+                 "CapturedRateFixId": 11,"Remark":12    
             }
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
 
-            if str(row_data["TestStatus"]).strip().lower() == "skip":
+            if str(row_data["TestStatus"]).strip().lower() != "run":
                 print(f"⏭️ Skipping Test Case: {row_data['TestCaseId']}")
                 continue
 
@@ -99,6 +99,10 @@ class RateFixGSTPurchase(unittest.TestCase):
                     print(f"🔍 Verifying Rate Fix {ratebox_id} in List Page...")
                     list_result = self.test_list_verification(ratebox_id, row_data)
                     print(f"📊 List Page Verification: {list_result[0]} - {list_result[1]}")
+
+                    # ── Seed SupplierPOPayment sheet with captured payable ──
+                    net_amount = result[3] if len(result) > 3 else 0.0
+                    self._write_supplier_po_payment_row(row_data, row_num, net_amount)
 
             except Exception as e:
                 print(f"❌ Test Case {row_data['TestCaseId']} failed with exception: {e}")
@@ -162,7 +166,7 @@ class RateFixGSTPurchase(unittest.TestCase):
                 current_field = f"PO REF NO ({row_data['PORefNo']})"
                 Function_Call.dropdown_select(
                     self,
-                    '//select[@id="select_po_ref_no"]/following-sibling::span',
+                    '//span[@id="select2-select_po_ref_no-container"]/span',
                     str(row_data["PORefNo"]),
                     '//span[@class="select2-search select2-search--dropdown"]/input'
                 )
@@ -212,6 +216,7 @@ class RateFixGSTPurchase(unittest.TestCase):
 
             # Fill rows
             current_field = "Item Row Filling"
+            total_ui_payable = 0.0
             for i in range(1, row_count + 1):
                 # Try to map data
                 item_data = row_data  # Default to main sheet
@@ -250,6 +255,10 @@ class RateFixGSTPurchase(unittest.TestCase):
                 print(f"Row {i} Filled - Fix Wt: {fix_wt}, Rate: {rate_val}")
                 print(f"   UI Calculation -> Taxable: {ui_taxable}, Tax: {ui_tax}, Payable: {ui_payable}")
                 print(f"   Py Calculation -> Taxable: {calc_res.get('taxable')}, Tax: {calc_res.get('tax')}, Payable: {calc_res.get('payable')}")
+                try:
+                    total_ui_payable += float(str(ui_payable).replace(",", "").strip() or 0)
+                except (ValueError, TypeError):
+                    pass
 
             # ── Remark ──
             if row_data["Remark"]:
@@ -274,7 +283,11 @@ class RateFixGSTPurchase(unittest.TestCase):
             sleep(3)
 
             # ── Check Success Message ──
-            return self._capture_save_result(row_data, "Rate Fixed Successfully")
+            save_result = self._capture_save_result(row_data, "Rate Fixed Successfully")
+            # Thread total payable through result tuple for SupplierPOPayment seeding
+            if len(save_result) >= 2:
+                return save_result + (total_ui_payable,)
+            return save_result
 
         except Exception as e:
             msg = f"❌ Test execution error in {current_field}: {e}"
@@ -521,7 +534,15 @@ class RateFixGSTPurchase(unittest.TestCase):
             sheet.cell(row=row_num, column=2, value=test_status).font = Font(bold=True, color=color)
             sheet.cell(row=row_num, column=3, value=actual_status).font = Font(bold=True, color=color)
             if captured_id:
-                sheet.cell(row=row_num, column=15, value=str(captured_id))
+                existing_val = sheet.cell(row=row_num, column=15).value
+                col8_val = sheet.cell(row=row_num, column=8).value
+                try:
+                    existing_num = float(existing_val) if existing_val not in (None, "", "None") else 0.0
+                    col8_num = float(col8_val) if col8_val not in (None, "", "None") else 0.0
+                    total_val = existing_num + col8_num
+                except (ValueError, TypeError):
+                    total_val = str(captured_id)
+                sheet.cell(row=row_num, column=15, value=total_val)
             workbook.save(FILE_PATH)
             workbook.close()
         except:
@@ -535,3 +556,67 @@ class RateFixGSTPurchase(unittest.TestCase):
             self.driver.save_screenshot(path)
         except Exception as e:
             print(f"Screenshot error: {e}")
+
+    # ─────────────────────────────────────────────────────────────────
+    # HELPER: SEED SupplierPOPayment SHEET
+    # ─────────────────────────────────────────────────────────────────
+    def _write_supplier_po_payment_row(self, row_data, src_row_num, net_amount=0.0):
+        """
+        Seeds one row into the SupplierPOPayment Excel sheet after a successful
+        Rate Fix GST entry.
+
+        SupplierPOPayment column layout:
+          col 1  = TestCaseId    (auto-generated from RateFixGST TestCaseId)
+          col 2  = TestStatus    (blank — filled by payment run)
+          col 3  = ActualStatus  (blank)
+          col 4  = BillType      (always 'bill')
+          col 5  = Karigar       (from row_data)
+          col 6  = (reserved / blank)
+          col 7  = BillSelection (PORefNo — the PO number used in rate fix)
+          col 8  = NetAmount     (total payable captured from UI)
+        """
+        target_sheet = "SupplierPOPayment"
+        try:
+            wb = load_workbook(FILE_PATH)
+            if target_sheet not in wb.sheetnames:
+                print(f"⚠️ Sheet '{target_sheet}' not found — skipping SupplierPOPayment seed row")
+                wb.close()
+                return
+
+            sheet = wb[target_sheet]
+
+            # Find next empty row after header
+            next_row = 2
+            for r in range(2, sheet.max_row + 2):
+                if sheet.cell(row=r, column=1).value is None:
+                    next_row = r
+                    break
+
+            # Auto-generate TestCaseId: e.g. RF_TC_SB_04 → SPP_TC_SB_04
+            src_tc = str(row_data.get("TestCaseId") or f"TC{src_row_num - 1:03d}").strip()
+            spp_tc_id = f"SPP_{src_tc}" if not src_tc.upper().startswith("SPP_") else src_tc
+
+            # col 1 — TestCaseId
+            sheet.cell(row=next_row, column=1, value=spp_tc_id).font = Font(bold=True)
+            # col 2 & 3 left blank for payment run to fill
+            # col 4 — BillType (default: bill)
+            sheet.cell(row=next_row, column=4, value="BILL").font = Font(bold=True)
+            # col 5 — Karigar
+            sheet.cell(row=next_row, column=5, value=str(row_data.get("Karigar") or "")).font = Font(bold=True)
+            # col 6 — reserved (blank)
+            # col 7 — BillSelection (PORefNo)
+            sheet.cell(row=next_row, column=7, value=str(row_data.get("PORefNo") or "")).font = Font(bold=True)
+            # col 8 — NetAmount (total payable from UI)
+            try:
+                net_amt_val = float(str(net_amount).replace(",", "").strip() or 0)
+            except (ValueError, TypeError):
+                net_amt_val = 0.0
+            sheet.cell(row=next_row, column=8, value=net_amt_val).font = Font(bold=True, color="0070C0")
+
+            wb.save(FILE_PATH)
+            wb.close()
+            print(f"✅ SupplierPOPayment seeded — Row={next_row}  TC={spp_tc_id}  "
+                  f"Karigar={row_data.get('Karigar')}  PO={row_data.get('PORefNo')}  NetAmount={net_amt_val}")
+        except Exception as e:
+            print(f"⚠️ SupplierPOPayment seed write failed: {e}")
+

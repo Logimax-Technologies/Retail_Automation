@@ -221,7 +221,7 @@ class main():
                             print("yes")
                             PurchaseReturn_automation = PurchaseReturn(driver)
                             Data = PurchaseReturn_automation.test_purchase_return()
-                        case "SmithSupplierPayment":
+                        case "SupplierPOPayment":
                             print("yes")
                             SmithSupplierPayment_automation = SmithSupplierPayment(driver)
                             Data = SmithSupplierPayment_automation.test_smith_supplier_payment()
@@ -377,6 +377,20 @@ class main():
             print("ct1 =", ct1.strftime("%Y-%m-%d %H:%M:%S.%f"))  # Format output
             print("ct2 =", ct2.strftime("%Y-%m-%d %H:%M:%S.%f"))  
             print("Time difference =", time_diff) 
+            
+            # Generate HTML Execution Report
+            try:
+                import generate_report
+                generate_report.generate_html_report()
+            except Exception as e:
+                print(f"Failed to generate HTML report: {e}")
+
+            # Generate Test Coverage Document (Manager Report)
+            try:
+                import generate_test_doc
+                generate_test_doc.generate_test_doc()
+            except Exception as e:
+                print(f"Failed to generate test coverage document: {e}")
 
     if __name__ == "__main__":
         print(__name__)

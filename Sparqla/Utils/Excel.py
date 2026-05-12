@@ -35,7 +35,12 @@ class ExcelUtils:
     # file_path = r"C:\Users\admin\Desktop\sqrqlas\Sqarqla_Retail_data2.xlsx"
     # file_path = r"C:\Users\Dell\Desktop\sqrqlas\sqrqlas\Sqarqla_Retail_data20.xlsx"
     file_path =r"C:\Users\admin\Desktop\sqrqlas\Book1.xlsx"
+
+    # file_path =r"C:\Users\admin\Desktop\sqrqlas\qa_auto\Book1.xlsx"
+
     SCREENSHOT_PATH = r"C:\Retail_Automation\Sparqla\Reports\screenshots"
+    # BASE_URL='https://qa_auto.retail.logimaxindia.com/admin/'
+
     BASE_URL='https://staging.kallarackalsjewellers.com/admin/'
     # BASE_URL = "https://qa.retail.logimaxindia.com/admin/" 
     # BASE_URL = "https://erp.sparqlediamonds.com/qa/admin/"

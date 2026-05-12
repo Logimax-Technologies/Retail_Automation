@@ -60,27 +60,25 @@ class ApprovalToInvoice(unittest.TestCase):
 
             # Mapping based on seeding in SupplierBillEntry.py
             data_map = {
-                "TestCaseId": 1, "TestStatus": 2, "OpeningBal": 4,
+                "TestCaseId": 1, "TestStatus": 2,  "ActualStatus": 3,"OpeningBal": 4,
                 "RateCutType": 5, "ConvertTo": 6, "ConvType": 7,
                 "SupplierName": 8, "RefNo": 9, "Metal": 10,
                 "Category": 11, "Product": 12, "PureWeight": 13,
-                "Amount": 14, "Rate": 15, "Remark": 16, "ActualStatus": 17
+                "Amount": 14, "Rate": 15, "Remark": 16
             }
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
             workbook.close()
 
-            sleep(2)
-            Function_Call.click(self, "//a[@id='add_Order']")
-
-            # if str(row_data.get("TestStatus")).strip().lower() == "skip":
-            #     print(f"⏭️ Skipping Test Case: {row_data['TestCaseId']}")
-            #     continue
+            if str(row_data.get("TestStatus")).strip().lower() != "run":
+                print(f"⏭️ Skipping Test Case: {row_data['TestCaseId']}")
+                continue
 
             print(f"\n{'='*80}")
             print(f"🧪 Running Test Case: {row_data['TestCaseId']}")
             print(f"{'='*80}")
-
+            sleep(2)
+            Function_Call.click(self, "//a[@id='add_Order']")
             try:
                 self.driver.refresh()
                 sleep(2)
@@ -245,7 +243,7 @@ class ApprovalToInvoice(unittest.TestCase):
             sheet = workbook[sheet_name]
             color = "00B050" if test_status == "Pass" else "FF0000"
             sheet.cell(row=row_num, column=2, value=test_status).font = Font(bold=True, color=color)
-            sheet.cell(row=row_num, column=16, value=actual_status).font = Font(bold=True, color=color)
+            sheet.cell(row=row_num, column=3, value=actual_status).font = Font(bold=True, color=color)
             workbook.save(FILE_PATH)
             workbook.close()
         except:

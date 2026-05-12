@@ -214,6 +214,7 @@ class Lot(unittest.TestCase):
                     elif str(row_data["StockType"]).strip().lower() in ["non-tagged", "non tagged"]:
                         self.update_BranchTransfer(row_data, workbook, row_num)
                         self.update_NonTag_Detail(row_data, workbook, row_num)
+                        self.update_NonTagReceipt(row_data, workbook, Lot_id, lot_items)
 
                     lot_items.clear()
                     print(f"Lot {Lot_id} processed. Items cleared.")
@@ -499,6 +500,64 @@ class Lot(unittest.TestCase):
         workbook.save(FILE_PATH)
         print(f"✅ NonTag_Detail Row {target_row} updated correctly.")
 
+    def update_NonTagReceipt(self, row_data, workbook, lot_id, lot_items):
+        """
+        Updates NonTagReceipt sheet after a non-tagged lot is added successfully.
+        Col 1 : TestCaseId
+        Col 4 : LotNo   (captured from URL)
+        Col 5 : Product
+        Col 6 : Design
+        Col 7 : Sub Design
+        Col 8 : Branch   (Lot Received field)
+        Col 9 : Section
+        Col 10: Pieces
+        Col 11: GrossWt
+        Col 12: NetWt  (GrossWt - LWT)
+        """
+        if "NonTagReceipt" not in workbook.sheetnames:
+            workbook.create_sheet("NonTagReceipt")
+            nr_sheet = workbook["NonTagReceipt"]
+            # Write headers on first creation
+            headers = {
+                1: "TestCaseId", 4: "LotNo", 5: "Product", 6: "Design",
+                7: "Sub Design", 8: "Branch", 9: "Section",
+                10: "Pieces", 11: "GrossWt", 12: "NetWt"
+            }
+            # for col, header in headers.items():
+                # nr_sheet.cell(row=1, column=col).value = header
+            # print("✅ NonTagReceipt sheet created with headers")
+        else:
+            nr_sheet = workbook["NonTagReceipt"]
+
+        # Find first empty row (after header)
+        target_row = 2
+        while nr_sheet.cell(row=target_row, column=1).value is not None:
+            target_row += 1
+
+        test_case_id = f"TC_NTR_{target_row - 1:03d}"
+
+        # Aggregate Pieces, GrossWt and LWT across all lot_items for this lot
+        total_pcs  = sum(int(item.get("pcs") or 0) for item in lot_items) if lot_items else int(row_data.get("Pcs") or 0)
+        total_gwt  = sum(float(item["row_data"].get("GWT") or 0) for item in lot_items) if lot_items else float(row_data.get("GWT") or 0)
+        total_lwt  = sum(float(item.get("lwt") or 0) for item in lot_items) if lot_items else 0.0
+        net_wt     = round(total_gwt - total_lwt, 3)
+
+        print(f"📊 Updating NonTagReceipt at row {target_row}: TC={test_case_id}, LotNo={lot_id}, Pcs={total_pcs}, GWT={total_gwt}, NWT={net_wt}")
+
+        nr_sheet.cell(row=target_row, column=1).value  = test_case_id
+        nr_sheet.cell(row=target_row, column=2).value  = 'Run'
+        nr_sheet.cell(row=target_row, column=4).value  = str(lot_id)
+        nr_sheet.cell(row=target_row, column=5).value  = row_data.get("Product")
+        nr_sheet.cell(row=target_row, column=6).value  = row_data.get("Design")
+        nr_sheet.cell(row=target_row, column=7).value  = row_data.get("Sub Design")
+        nr_sheet.cell(row=target_row, column=8).value  = row_data.get("Lot Received")
+        nr_sheet.cell(row=target_row, column=10).value = total_pcs
+        nr_sheet.cell(row=target_row, column=11).value = round(total_gwt, 3)
+        nr_sheet.cell(row=target_row, column=12).value = net_wt
+
+        workbook.save(FILE_PATH)
+        print(f"✅ NonTagReceipt Row {target_row} written: {test_case_id} | LotNo={lot_id} | Pcs={total_pcs} | GWT={total_gwt} | NWT={net_wt}")
+
     def update_Lot_id(self, Lot_id, start_row, lot_items, workbook, test_status=None, actual_status=None):
         """Distributes Lot metadata for multiple products across Tag and Tag_LWt sheets. Returns (Total_Pcs_count, message)."""
         try:
@@ -640,7 +699,7 @@ class Lot(unittest.TestCase):
             return {}
 
     def is_element_present(self, how, what):
-        try: self.wait.until(EC.element_to_be_clickable(by=how, value=what))
+        try: self.wait.until(EC.element_to_be_clickable((how, what)))
         except NoSuchElementException as e: return False
         return True
     

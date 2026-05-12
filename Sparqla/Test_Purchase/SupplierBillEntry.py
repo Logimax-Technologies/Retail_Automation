@@ -76,7 +76,9 @@ class SupplierBillEntry(unittest.TestCase):
 
             # if str(row_data["TestStatus"]).strip().lower() != "yes":
             #     continue
-
+            if str(row_data.get("TestStatus")).strip().lower()!="run":
+                print(f"Row {row_num}: Status is not Run, skipping... ✅")
+                continue
             print(f"\n{'='*80}")
             print(f"🧪 Running Test Case: {row_data['TestCaseId']}")
             print(f"{'='*80}")
@@ -108,6 +110,18 @@ class SupplierBillEntry(unittest.TestCase):
                         print(f"📝 Captured Po No: {po_no}")
                         # ── Write PurchasePoDetail sheet with captured Po No ──
                         self._write_purchase_po_detail(po_no, getattr(self, '_pending_summary_data', None))
+
+                        # ── PU GRN + Rate Not Fixed → seed RateFixGST with captured po_no ──
+                        grn_val  = str(row_data.get("GRNNumber") or "").strip().upper()
+                        rate_fix = str(row_data.get("RateFixed") or "").strip().lower()
+                        if grn_val.startswith("PU") and rate_fix == "no":
+                            pure_wt = getattr(self, '_pending_summary_data', None)
+                            pure_wt = (pure_wt or {}).get("PureWt", "0")
+                            self._write_rate_fix_gst_row(row_data, row_num, pure_wt, po_no=po_no)
+                            
+                        if grn_val.startswith("PM") and rate_fix == "no":
+                            pure_wt = (self._pending_summary_data or {}).get("PureWt", "0")
+                            self._write_approval_to_invoice_row(row_data, row_num, po_no, pure_wt)
 
                 # Consolidate status updates to a single call after verification
                 self._update_excel_status(row_num, result[0], result[1], sheet_name, GRN_no, po_no=po_no, hallmark=str(row_data.get("Hallmark", "")))
@@ -186,12 +200,12 @@ class SupplierBillEntry(unittest.TestCase):
                 except Exception as e:
                     print(f"⚠️ Failed to select Purchase Category: {e}")
 
-            # radios = [("ApprovalStock", "approval_stock_"), ("RateFixed", "is_rate_fixed_")]
-            # for field, prefix in radios:
-            #     if row_data.get(field):
-            #         current_field = field
-            #         suffix = "yes" if str(row_data[field]).lower() == "yes" else "no"
-            #         Function_Call.click(self, f'//input[@id="{prefix}{suffix}"]')
+            radios = [ ("RateFixed", "is_rate_fixed_")]  #("ApprovalStock", "approval_stock_"),
+            for field, prefix in radios:
+                if row_data.get(field):
+                    current_field = field
+                    suffix = "yes" if str(row_data[field]).lower() == "yes" else "no"
+                    Function_Call.click(self, f'//input[@id="{prefix}{suffix}"]')
             
             if row_data.get("Hallmark"):
                 current_field = "Hallmark"
@@ -338,17 +352,12 @@ class SupplierBillEntry(unittest.TestCase):
                     captured_grn = match.group(1) if match else row_data.get("GRNNumber") or ""
 
                     # ── PM GRN + Rate Not Fixed → seed RateFixGST sheet ──
+                    # NOTE: _write_rate_fix_gst_row is called AFTER list verification
+                    # (in test_supplier_bill_entry) so that the captured po_no is available.
                     grn_val  = str(row_data.get("GRNNumber") or "").strip().upper()
                     rate_fix = str(row_data.get("RateFixed") or "").strip().lower()
-                    if grn_val.startswith("PU") and rate_fix == "no":
-                        pure_wt = (self._pending_summary_data or {}).get("PureWt", "0")
-                        self._write_rate_fix_gst_row(row_data, row_num, pure_wt)
 
 
-                    # ── PM GRN + Rate Not Fixed → seed ApprovalToInvoice sheet ──
-                    if grn_val.startswith("PM") and rate_fix == "no":
-                        pure_wt = (self._pending_summary_data or {}).get("PureWt", "0")
-                        self._write_approval_to_invoice_row(row_data, row_num, captured_grn, pure_wt)
 
                     return ("Pass", f"✅ Purchase Entry added successfully: {captured_grn}", captured_grn, job_id)
                 return ("Fail", f"Unexpected: {msg}", None, job_id)
@@ -491,54 +500,55 @@ class SupplierBillEntry(unittest.TestCase):
             
             sheet.cell(row=row_num, column=30, value=f"{test_status} - {actual_status}").font = Font(color=color)
             
-            # Dynamic Row Mapping Formula (1:2 mapping)
-            # SupplierBillEntry Row 2 -> Auxiliary Rows 2 & 3
-            # SupplierBillEntry Row 3 -> Auxiliary Rows 4 & 5
-            issue_idx = (row_num - 2) * 2 + 2
-            receipt_idx = issue_idx + 1
-            tc_issue = f"TC{issue_idx - 1:03d}"
-            tc_receipt = f"TC{receipt_idx - 1:03d}"
-
-            # Update HMIssueReceipt sheet logic (Specifically for unique rows based on row_num)
+            # Update HMIssueReceipt sheet logic — append after sheet's last row
             if test_status == "Pass" and str(hallmark).lower() == "no":
                 hm_sheet_name = "HMIssueReceipt"
                 if hm_sheet_name in workbook.sheetnames:
                     hm_sheet = workbook[hm_sheet_name]
                     target_ref = po_no if po_no else ref_no
-                    
+
                     if target_ref:
+                        issue_idx = hm_sheet.max_row + 1
+                        receipt_idx = issue_idx + 1
+                        tc_issue = f"TC{issue_idx - 1:03d}"
+                        tc_receipt = f"TC{receipt_idx - 1:03d}"
+
                         # Sequential Issue Row
                         hm_sheet.cell(row=issue_idx, column=1, value=tc_issue).font = Font(bold=True)
                         hm_sheet.cell(row=issue_idx, column=4, value="issue")
                         hm_sheet.cell(row=issue_idx, column=6, value=target_ref).font = Font(bold=True)
-                        
+
                         # Sequential Receipt Row
                         hm_sheet.cell(row=receipt_idx, column=1, value=tc_receipt).font = Font(bold=True)
                         hm_sheet.cell(row=receipt_idx, column=4, value="receipt")
                         hm_sheet.cell(row=receipt_idx, column=6, value=target_ref).font = Font(bold=True)
-                        
+
                         print(f"📝 Linked {target_ref} to {hm_sheet_name} (Rows {issue_idx}/{receipt_idx})")
 
-            # Update QCIssueReceipt sheet logic (Specifically for unique rows based on row_num)
+            # Update QCIssueReceipt sheet logic — append after sheet's last row
             if test_status == "Pass":
                 qc_sheet_name = "QCIssueReceipt"
                 if qc_sheet_name in workbook.sheetnames:
                     qc_sheet = workbook[qc_sheet_name]
                     target_ref = po_no if po_no else ref_no
-                    
+
                     if target_ref:
+                        qc_issue_idx = qc_sheet.max_row + 1
+                        qc_receipt_idx = qc_issue_idx + 1
+                        qc_tc_issue = f"TC{qc_issue_idx - 1:03d}"
+                        qc_tc_receipt = f"TC{qc_receipt_idx - 1:03d}"
+
                         # Sequential Issue Row
-                        qc_sheet.cell(row=issue_idx, column=1, value=tc_issue).font = Font(bold=True)
-                        qc_sheet.cell(row=issue_idx, column=4, value="issue")
-                        qc_sheet.cell(row=issue_idx, column=6, value=target_ref).font = Font(bold=True)
-                        
+                        qc_sheet.cell(row=qc_issue_idx, column=1, value=qc_tc_issue).font = Font(bold=True)
+                        qc_sheet.cell(row=qc_issue_idx, column=4, value="issue")
+                        qc_sheet.cell(row=qc_issue_idx, column=6, value=target_ref).font = Font(bold=True)
 
                         # Sequential Receipt Row
-                        qc_sheet.cell(row=receipt_idx, column=1, value=tc_receipt).font = Font(bold=True)
-                        qc_sheet.cell(row=receipt_idx, column=4, value="receipt")
-                        qc_sheet.cell(row=receipt_idx, column=6, value=target_ref).font = Font(bold=True)
-                        
-                        print(f"📝 Linked {target_ref} to {qc_sheet_name} (Rows {issue_idx}/{receipt_idx})")
+                        qc_sheet.cell(row=qc_receipt_idx, column=1, value=qc_tc_receipt).font = Font(bold=True)
+                        qc_sheet.cell(row=qc_receipt_idx, column=4, value="receipt")
+                        qc_sheet.cell(row=qc_receipt_idx, column=6, value=target_ref).font = Font(bold=True)
+
+                        print(f"📝 Linked {target_ref} to {qc_sheet_name} (Rows {qc_issue_idx}/{qc_receipt_idx})")
 
             workbook.save(FILE_PATH)
             workbook.close()
@@ -564,7 +574,16 @@ class SupplierBillEntry(unittest.TestCase):
                 if match:
                     job_id = match.group(1)
                     print(f"🔍 Captured Job ID from URL: {job_id}")
-                
+
+                # Dismiss the "Save Print Output As" PDF dialog (if it appeared)
+                # Send Escape key to close any open browser dialog/popup
+                try:
+                    from selenium.webdriver.common.action_chains import ActionChains
+                    ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
+                    sleep(1)
+                except Exception as esc_err:
+                    print(f"⚠️ Escape key send failed (dialog may not be open): {esc_err}")
+
                 self.driver.close()
                 self.driver.switch_to.window(windows[0])
             else:
@@ -961,7 +980,7 @@ class SupplierBillEntry(unittest.TestCase):
         except Exception as e:
             print(f"⚠️ PurchasePoDetail write failed: {e}")
 
-    def _write_rate_fix_gst_row(self, row_data, src_row_num, total_pure_wt):
+    def _write_rate_fix_gst_row(self, row_data, src_row_num, total_pure_wt, po_no=None):
         """
         Writes a seed row into the RateFixGST Excel sheet when:
           - GRNNumber starts with 'PM-'
@@ -1001,9 +1020,10 @@ class SupplierBillEntry(unittest.TestCase):
             # col 2 & 3 left blank for test run to fill
             sheet.cell(row=next_row, column=4, value=str(row_data.get("Karigar") or "")).font = Font(bold=True)
             sheet.cell(row=next_row, column=5, value='FY 26 - 27').font = Font(bold=True)
-            # PORefNo — prefer the GRN number as the PO reference for PM bills
-            po_ref = str(row_data.get("GRNNumber") or "").strip()
-            sheet.cell(row=next_row, column=6, value=po_ref).font = Font(bold=True)
+            # PORefNo — use captured PO number from list verification (e.g. P-00009)
+            # Fallback to GRN number only if po_no was not captured
+            po_ref = str(po_no or row_data.get("GRNNumber") or "").strip()
+            sheet.cell(row=next_row, column=6, value=po_no).font = Font(bold=True)
             # TotalPureWt → FixWt column in RateFixGST
             try:
                 pure_wt_val = float(str(total_pure_wt).replace(",", "").strip() or 0)
@@ -1019,7 +1039,7 @@ class SupplierBillEntry(unittest.TestCase):
         except Exception as e:
             print(f"⚠️ RateFixGST seed write failed: {e}")
 
-    def _write_approval_to_invoice_row(self, row_data, src_row_num, po_ref_no, total_pure_wt="0"):
+    def _write_approval_to_invoice_row(self, row_data, src_row_num, po_no, total_pure_wt="0"):
         """
         Writes a seed row into the ApprovalToInvoice Excel sheet when:
           - GRNNumber starts with 'PM'
@@ -1073,10 +1093,8 @@ class SupplierBillEntry(unittest.TestCase):
             sheet.cell(row=next_row, column=7,  value="Unfix").font = Font(bold=True)
             # col 8 — SupplierName
             sheet.cell(row=next_row, column=8,  value=str(row_data.get("Karigar") or "")).font = Font(bold=True)
-            # col 9 — RefNo (Prioritize Excel PONumber over captured GRN)
-            po_ref = str(row_data.get("PONumber") or po_ref_no or "").strip()
-            print("po_ref", po_ref)
-            sheet.cell(row=next_row, column=9,  value=po_ref).font = Font(bold=True)
+            # col 9 — RefNo
+            sheet.cell(row=next_row, column=9,  value=po_no).font = Font(bold=True)
             # col 10 — Karigar (Metal)
             # sheet.cell(row=next_row, column=10, value=str(row_data.get("Karigar") or "")).font = Font(bold=True)
             # col 11 — Category
@@ -1093,6 +1111,6 @@ class SupplierBillEntry(unittest.TestCase):
             wb.save(FILE_PATH)
             wb.close()
             print(f"✅ ApprovalToInvoice seeded — Row={next_row}  TC={ati_tc_id}  "
-                  f"Supplier={row_data.get('SupplierName')}  RefNo={po_ref}  PureWt={pure_wt_val}")
+                  f"Supplier={row_data.get('Karigar')}  RefNo={po_no}  PureWt={pure_wt_val}")
         except Exception as e:
             print(f"⚠️ ApprovalToInvoice seed write failed: {e}")

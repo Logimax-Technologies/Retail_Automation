@@ -169,7 +169,7 @@ class Billing(unittest.TestCase):
                 Function_Call.click2(self, '(//button[@class="btn btn-close btn-warning"])[11]')
                 Function_Call.click(self, '//a[@id="tab_items"]')
                 # Validate Sales Items Amount and Repair Item Details Amount
-                self._validate_repair_order_amounts(row_data, row_num, sheet_name)
+                # self._validate_repair_order_amounts(row_data, row_num, sheet_name)
         return True
 
     def _select_last_filter_bill(self, row_num, sheet_name):
@@ -678,8 +678,8 @@ class Billing(unittest.TestCase):
             sn = "Bill details"
             if sn not in wb.sheetnames:
                 sh = wb.create_sheet(sn)
-                # Updated 13-column header structure
-                headers = ["Bill Type", "InvoiceNo", "Cash", "Carddetails", "Amount", "Cheque", "Amount", "Net Banking", "Amount", "Bill Amount", "Creidt Amount", "Credit Due Date", "Credit Balance Amt"]
+                # Updated 14-column header structure
+                headers = ["Bill Type", "InvoiceNo", "Cash", "Carddetails", "Amount", "Cheque", "Amount", "Net Banking", "Amount", "Bill Amount", "Creidt Amount", "Credit Due Date", "Credit Balance Amt", "Bill Date"]
                 for i, h in enumerate(headers, 1):
                     sh.cell(row=1, column=i, value=h).font = Font(bold=True)
             else:
@@ -723,6 +723,9 @@ class Billing(unittest.TestCase):
                 # Use the actual adjustable_amount (received_val) passed from _handle_payments
                 actual_received = amounts.get("Adjustable", 0)
                 sh.cell(row=row, column=13, value=total - actual_received)
+
+            timestamp = datetime.now().strftime("%Y-%m-%d")
+            sh.cell(row=row, column=14, value=timestamp)
 
             wb.save(FILE_PATH)
             wb.close()

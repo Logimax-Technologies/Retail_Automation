@@ -46,18 +46,19 @@ class ESTIMATION_NonTag(unittest.TestCase):
                     "Section":4,
                     "Product":5,
                     "Design":6,
-                    "Sub Design":7, 
-                    "Employee":8,
-                    "Purity":9,
-                    "Size":10, 
-                    "Pcs":11,
-                    "G.Wt":12, 
-                    "Rate":13, 
-                    "MC Type":14, 
-                    "MC Value":15,
-                    "Wastage%":16, # Note: Sheet has 'Wastage% '
-                    "Charge":17,
-                    "Field_validation_status":18,
+                    "Sub Design":7,
+                    "Packet":8,         # new column
+                    "Employee":9,
+                    "Purity":10,
+                    "Size":11,
+                    "Pcs":12,
+                    "G.Wt":13,
+                    "Rate":14,
+                    "MC Type":15,
+                    "MC Value":16,
+                    "Wastage%":17,
+                    "Charge":18,
+                    "Field_validation_status":19,
                 }
                 row_data = {
                     key: sheet.cell(row=row_num, column=col).value
@@ -72,7 +73,7 @@ class ESTIMATION_NonTag(unittest.TestCase):
                 needed_pcs = int(row_data["Pcs"] or 1)
                 
 
-                src_sheet, src_row, tot_pcs, tot_purity, tot_gwt, tot_Mctype, tot_McValue, tot_Wastage, othercharge = ESTIMATION_NonTag._find_nontag_source(sec, prod, des, sub)
+                src_sheet, src_row, tot_pcs, tot_purity, tot_gwt, tot_Mctype, tot_McValue, tot_Wastage, othercharge, tot_packet = ESTIMATION_NonTag._find_nontag_source(sec, prod, des, sub)
                 
                 if src_sheet:
                     # Calculate proportional weight
@@ -88,24 +89,29 @@ class ESTIMATION_NonTag(unittest.TestCase):
                     
                     print(f"🔍 Found inventory in {src_sheet} row {src_row}. Calculating weight for {needed_pcs} pcs: {taken_weight}")
                     
-                    # Update NonTag_Est sheet immediately
-                    sheet.cell(row=row_num, column=9, value=tot_purity)
-                    sheet.cell(row=row_num, column=11, value=needed_pcs)
-                    sheet.cell(row=row_num, column=12, value=taken_weight)
-                    sheet.cell(row=row_num, column=14, value=MC_Type)
-                    sheet.cell(row=row_num, column=15, value=tot_McValue)
-                    sheet.cell(row=row_num, column=16, value=Wastage)
-                    sheet.cell(row=row_num, column=17, value=othercharge)
+                    # Update NonTag_Est sheet immediately (col 8=Packet, shifted +1 for new Packet col)
+                    if tot_packet:
+                        sheet.cell(row=row_num, column=8, value=tot_packet)
+                        print(f"✅ Packet auto-filled from inventory: {tot_packet}")
+                    sheet.cell(row=row_num, column=10, value=tot_purity)
+                    sheet.cell(row=row_num, column=12, value=needed_pcs)
+                    sheet.cell(row=row_num, column=13, value=taken_weight)
+                    sheet.cell(row=row_num, column=15, value=MC_Type)
+                    sheet.cell(row=row_num, column=16, value=tot_McValue)
+                    sheet.cell(row=row_num, column=17, value=Wastage)
+                    sheet.cell(row=row_num, column=18, value=othercharge)
                     workbook.save(FILE_PATH)
                     
                     # [FIX] Update row_data so 'create' method uses the latest values
-                    row_data["Purity"] = tot_purity
-                    row_data["Pcs"] = needed_pcs
-                    row_data["G.Wt"] = taken_weight
+                    row_data["Purity"]   = tot_purity
+                    row_data["Pcs"]     = needed_pcs
+                    row_data["G.Wt"]    = taken_weight
                     row_data["MC Type"] = MC_Type
                     row_data["MC Value"] = tot_McValue
                     row_data["Wastage%"] = Wastage
-                    row_data["Charge"] = othercharge
+                    row_data["Charge"]   = othercharge
+                    if tot_packet:
+                        row_data["Packet"] = tot_packet
                     
                     # Store track of taken inventory
                     if not hasattr(self, 'nontag_found_rows'):
@@ -185,6 +191,18 @@ class ESTIMATION_NonTag(unittest.TestCase):
             msg = f"'{None}' → Sub Design field is mandatory ⚠️"
             Mandatory_field.append("Sub Design"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)
         
+        # Packet
+        if row_data.get("Packet"):
+            Function_Call.dropdown_select(
+                self, f"(//span[starts-with(@id,'select2-est_catalog') and contains(@id,'[id_stock_packet]')])[{row}]",
+                str(row_data["Packet"]),
+                '//span[@class="select2-search select2-search--dropdown"]/input')
+            print(f"✅ Packet selected: {row_data['Packet']}")
+        else:
+            print("ℹ️ No Packet specified — skipping")
+
+
+
         # Employee 
         if row_data["Employee"] is not None:
             Function_Call.dropdown_select(
@@ -286,7 +304,7 @@ class ESTIMATION_NonTag(unittest.TestCase):
             Mandatory_field.append("Wastage%"); print(msg); Function_Call.Remark(self,row_num, msg,Sheet_name)        
         
         # Open Other Charge section
-        Function_Call.click(self, f"(//table[@id='estimation_catalog_details']//td[21]/a)[{row}]")
+        Function_Call.click(self, f"(//table[@id='estimation_catalog_details']//td[22]/a)[{row}]")
 
         charges_raw = row_data["Charge"]
         if not charges_raw:
@@ -547,7 +565,8 @@ class ESTIMATION_NonTag(unittest.TestCase):
                 s_des = str(sheet.cell(row=r, column=4).value or "").strip()
                 s_sub = str(sheet.cell(row=r, column=5).value or "").strip()
                 
-                if s_sec.lower() == sec.lower() and \
+                sec_match = (not sec) or (s_sec.lower() == sec.lower())
+                if sec_match and \
                    s_prod.lower() == product.lower() and \
                    s_des.lower() == design.lower() and \
                    s_sub.lower() == sub_design.lower():
@@ -559,11 +578,12 @@ class ESTIMATION_NonTag(unittest.TestCase):
                     total_McValue = float(sheet.cell(row=r, column=10).value or 0)
                     total_Wastage = float(sheet.cell(row=r, column=11).value or 0)
                     othercharge = str(sheet.cell(row=r, column=12).value or '')
-                    taken_pcs = float(sheet.cell(row=r, column=14).value or 0)
+                    packet_no = str(sheet.cell(row=r, column=13).value or '')  # col 13 = PacketNO
+                    taken_pcs = float(sheet.cell(row=r, column=15).value or 0)  # col 14=Status, 15=TakenPcs
                     
                     if total_pcs > 0 and taken_pcs < total_pcs:
-                        return sheet_name, r, total_pcs, total_purity, total_gwt, total_Mctype, total_McValue, total_Wastage, othercharge
-        return None, None, None, None, None, None, None, None, None
+                        return sheet_name, r, total_pcs, total_purity, total_gwt, total_Mctype, total_McValue, total_Wastage, othercharge, packet_no
+        return None, None, None, None, None, None, None, None, None, None
 
     @staticmethod
     def update_source_inventory(found_rows,estimation_no):
@@ -581,15 +601,16 @@ class ESTIMATION_NonTag(unittest.TestCase):
             for sheet_name, r, t_pcs, t_gwt in found_rows:
                 if sheet_name in workbook.sheetnames:
                     sheet = workbook[sheet_name]
-                    curr_pcs = float(sheet.cell(row=r, column=14).value or 0)
-                    curr_gwt = float(sheet.cell(row=r, column=15).value or 0)
+                    # col 13 = PacketNO (new), 14 = Status, 15 = TakenPcs, 16 = TakenWt, 17 = Entry
+                    curr_pcs = float(sheet.cell(row=r, column=15).value or 0)
+                    curr_gwt = float(sheet.cell(row=r, column=16).value or 0)
                     
-                    sheet.cell(row=r, column=14, value=curr_pcs + t_pcs)
-                    sheet.cell(row=r, column=15, value=curr_gwt + t_gwt)
-                    # Update column 13 status in inventory sheet to "Estimated"
-                    sheet.cell(row=r, column=13, value="Estimated").font = Font(bold=True, color="00B050")
-                    # Update column 16 with Estimation No and Time
-                    sheet.cell(row=r, column=16, value=entry)
+                    sheet.cell(row=r, column=15, value=curr_pcs + t_pcs)
+                    sheet.cell(row=r, column=16, value=curr_gwt + t_gwt)
+                    # Update column 14 status to "Estimated"
+                    sheet.cell(row=r, column=14, value="Estimated").font = Font(bold=True, color="00B050")
+                    # Update column 17 with Estimation No and Time
+                    sheet.cell(row=r, column=17, value=entry)
                     print(f"✅ Updated {sheet_name} row {r}: +{t_pcs} Pcs, +{t_gwt} Weight with Est No: {estimation_no}")
 
             workbook.save(FILE_PATH)

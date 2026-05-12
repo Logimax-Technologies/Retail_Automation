@@ -47,7 +47,7 @@ class SmithSupplierPayment(unittest.TestCase):
             sleep(2)
 
         # Read Excel data
-        sheet_name = "SmithSupplierPayment"
+        sheet_name = "SupplierPOPayment"
         try:
             valid_rows = ExcelUtils.get_valid_rows(FILE_PATH, sheet_name)
             print(f"✅ Found {valid_rows - 1} test cases in '{sheet_name}' sheet")
@@ -65,8 +65,8 @@ class SmithSupplierPayment(unittest.TestCase):
                 "BillType": 4, "Karigar": 5, "OpeningBalance": 6,
                 "BillSelection": 7, "NetAmount":8,"CashAmount": 9, "NB_YesNo": 10,
                 "NB_Type": 11, "NB_Bank": 12, "NB_Amount": 13, "NB_RefNo": 14, "NB_Date": 15,
-                "Cheque_YesNo": 16, "ChequeDate": 17, "ChequeBank": 18, "branch": 19, "ChequeNo": 20,
-                "ifsc": 21, "ChequeAmount": 22, "Remark": 23, "ExpectedNetAmount": 24, "ExpectedPayRefNo": 25, "ExpectedStatus": 26
+                "Cheque_YesNo": 16, "ChequeDate": 17, "ChequeBank": 18, "branch": 19,"Payee Name":20, "ChequeNo": 21,
+                "ifsc": 22, "ChequeAmount": 23, "Remark": 24, "ExpectedNetAmount": 25, "ExpectedPayRefNo": 26, "ExpectedStatus": 27
             }
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
@@ -135,7 +135,7 @@ class SmithSupplierPayment(unittest.TestCase):
                     sleep(1)
                     # Click Clear All first
                     Function_Call.click(self, "//button[contains(text(), 'Clear All')]")
-                    sleep(2)
+                    sleep(3)  # Wait for checkboxes to uncheck
                     
                     for r in selection.split(','):
                         target_refs.append(r.strip())
@@ -144,59 +144,85 @@ class SmithSupplierPayment(unittest.TestCase):
 
                 # Locate all rows in the pending bills container
                 bill_rows = driver.find_elements(By.XPATH, "//div[@id='pending_bills_container']//table/tbody/tr")
-                
-                for i, row in enumerate(bill_rows, 0):
-                    try:
-                        ref_no = row.find_element(By.XPATH, "./td[2]").text.strip()
-                        amount_text = row.find_element(By.XPATH, "./td[3]").text.strip().replace(',', '')
-                        amount = float(amount_text or 0)
-                        
-                        # Construct a unique XPath for the checkbox in this specific row (name-based as requested)
-                        checkbox_xpath = f"//input[@name='billing[{i}][bill_ids][]']"
-                        checkbox = driver.find_element(By.XPATH, checkbox_xpath)
-                        
-                        if selection.lower() == "all":
+
+                if selection.lower() == "all":
+                    # Select all rows using ref-no-based XPath per row
+                    for row in bill_rows:
+                        try:
+                            ref_no = row.find_element(By.XPATH, "./td[2]").text.strip()
+                            amount_text = row.find_element(By.XPATH, "./td[3]").text.strip().replace(',', '')
+                            amount = float(amount_text or 0)
+
+                            # Ref-no-based XPath to find the checkbox in this specific row
+                            # Use contains(normalize-space(.), ...) to match text inside nested child elements too
+                            checkbox_xpath = f"//div[@id='pending_bills_container']//table/tbody/tr[td[contains(normalize-space(.), '{ref_no}')]]//input[@type='checkbox']"
+                            checkbox = driver.find_element(By.XPATH, checkbox_xpath)
+
                             if not checkbox.is_selected():
                                 Function_Call.click(self, checkbox_xpath)
                             total_selected_amt += amount
                             print(f"✅ Selected Bill: {ref_no} (Amount: {amount})")
-                        elif ref_no in target_refs:
+                        except Exception as e:
+                            print(f"⚠️ Row processing error (all): {e}")
+                else:
+                    # Select only the specified ref nos using direct ref-no-based XPath
+                    Po_NO = (row_data["BillSelection"]).strip()
+                    print(Po_NO)
+                    for Po_NO in target_refs:
+                        try:
+                            # XPath: find the row whose td contains this ref_no (handles nested spans/anchors)
+                            checkbox_xpath = f"//tr[td[text()='{Po_NO}']]//input[@type='checkbox']"
+                            checkbox = driver.find_element(By.XPATH, checkbox_xpath)
+
+                            # Get amount from the same row
+                            amount_text = driver.find_element(
+                                By.XPATH,
+                                f"//div[@id='pending_bills_container']//table/tbody/tr[td[contains(normalize-space(.), '{Po_NO}')]]/td[3]"
+                            ).text.strip().replace(',', '')
+                            amount = float(amount_text or 0)
+
                             if not checkbox.is_selected():
                                 Function_Call.click(self, checkbox_xpath)
                             total_selected_amt += amount
-                            print(f"✅ Selected Bill: {ref_no} (Amount: {amount})")
-                        else:
-                            # Already cleared if not 'all'
-                            if checkbox.is_selected():
-                                Function_Call.click(self, checkbox_xpath)
-                    except Exception as e:
-                        print(f"⚠️ Row processing error: {e}")
+                            print(f"✅ Selected Bill: {Po_NO} (Amount: {amount})")
+                        except Exception as e:
+                            print(f"⚠️ Could not select bill '{Po_NO}': {e}")
 
                 sleep(2)
                 
-                # Verify Net Amount equality
+                # Read actual net amount from UI after bill selection
                 ui_net_amt_val = driver.find_element(By.ID, "balance_amount").get_attribute("value").replace(',', '')
                 ui_net_amt = float(ui_net_amt_val or 0)
                 
-                print(f"📊 Verification: Selected Sum ({total_selected_amt}) vs UI Net Amount ({ui_net_amt})")
-                if abs(total_selected_amt - ui_net_amt) > 0.01:
-                    print(f"❌ Amount Mismatch! Total Selected: {total_selected_amt}, UI Shown: {ui_net_amt}")
-                    # We continue but log the error
-                else:
-                    print(f"✅ Amount Verified: Sum matches UI Net Amount.")
+                print(f"📊 Bill Row Amount Sum : {total_selected_amt}")
+                print(f"📊 UI balance_amount   : {ui_net_amt}")
                 
-                # Instantly save Net Amount to Excel
-                try:
-                    wb = load_workbook(FILE_PATH)
-                    ws = wb[sheet_name]
-                    ws.cell(row=row_num, column=8, value=ui_net_amt) # Column 8 is NetAmount
-                    wb.save(FILE_PATH)
-                    wb.close()
-                    print(f"💾 Net Amount ({ui_net_amt}) saved to Excel successfully.")
-                except Exception as e:
-                    print(f"⚠️ Failed to save Net Amount to Excel: {e}")
+                # Save NetAmount to Excel (column 8) ONLY when BillSelection == "All"
+                if selection.lower() == "all":
+                    net_amount_to_save = total_selected_amt
+                    print(f"💡 BillSelection=All → saving NetAmount: {net_amount_to_save}")
+                    try:
+                        wb = load_workbook(FILE_PATH)
+                        ws = wb[sheet_name]
+                        ws.cell(row=row_num, column=8, value=net_amount_to_save)
+                        wb.save(FILE_PATH)
+                        wb.close()
+                        print(f"💾 BillAmount ({net_amount_to_save}) saved to Excel (col 8).")
+                    except Exception as e:
+                        print(f"⚠️ Failed to save BillAmount to Excel: {e}")
+                else:
+                    # BillSelection is specific — verify selected bill amount matches Excel NetAmount
+                    excel_net_amt = float(row_data.get("NetAmount") or 0)
+                    print(f"🔍 Specific Bill Check: total_selected_amt={total_selected_amt} | Excel NetAmount={excel_net_amt}")
+                    if abs(total_selected_amt - excel_net_amt) <= 0.01:
+                        print(f"✅ Match: Selected bill amount equals Excel NetAmount ({excel_net_amt})")
+                    else:
+                        print(f"❌ Mismatch: Selected={total_selected_amt} ≠ Excel NetAmount={excel_net_amt}")
                 
                 sleep(2)
+
+
+
 
             # --- Payment Calculation Logic ---
             ui_net_amt_val = driver.find_element(By.ID, "balance_amount").get_attribute("value").replace(',', '')
@@ -316,6 +342,9 @@ class SmithSupplierPayment(unittest.TestCase):
                     if row_data.get("branch"):
                         driver.find_element(By.XPATH, f"{last_row_xpath}//input[contains(@class, 'bank_branch')]").send_keys(str(row_data["branch"]))
                
+                    if row_data.get("Payee Name"):
+                        driver.find_element(By.XPATH, f"{last_row_xpath}//input[contains(@class, 'payee_name')]").send_keys(str(row_data["Payee Name"]))
+
                     if row_data.get("ChequeNo"):
                         driver.find_element(By.XPATH, f"{last_row_xpath}//input[contains(@class, 'cheque_no')]").send_keys(str(row_data["ChequeNo"]))
                     

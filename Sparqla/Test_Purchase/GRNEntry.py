@@ -78,6 +78,9 @@ class GRNEntry(unittest.TestCase):
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
 
+            if str(row_data.get("TestStatus")).strip().lower()!="run":
+                print(f"Row {row_num}: Status is not Run, skipping... ✅")
+                continue
             print(f"\n{'='*80}")
             print(f"🧪 Running Test Case: {row_data['TestCaseId']}")
             print(f"{'='*80}")

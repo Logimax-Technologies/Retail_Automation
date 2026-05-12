@@ -64,22 +64,22 @@ class ApprovalRateFixing(unittest.TestCase):
             # Column mapping based on prompt
             data_map = {
                 "TestCaseId": 1, "TestStatus": 2, "ActualStatus": 3,
-                "Karigar": 4, "PORefNo": 5, "TotalPureWt":6, "FixWt":7, 
+                "Karigar": 4, "ApprovalRatefixNo": 5, "TotalPureWt":6, "FixWt":7, 
                 "RateExclTax":8, "GSTPercent":9,"CapturedRateFixId":10,"Remark":11
             }
 
             row_data = {key: sheet.cell(row=row_num, column=col).value for key, col in data_map.items()}
 
-            # if str(row_data["TestStatus"]).strip().lower() == "skip":
-            #     print(f"⏭️ Skipping Test Case: {row_data['TestCaseId']}")
-            #     continue
-
+            if str(row_data["TestStatus"]).strip().lower() != "run":
+                print(f"⏭️ Skipping row {row_num} (Status={row_data.get('TestStatus')})")
+                continue
             print(f"\n{'='*80}")
             print(f"🧪 Running Test Case: {row_data['TestCaseId']}")
             print(f"{'='*80}")
 
             # Dispatch to correct scenario based on TestCaseId keyword
             tc_id = str(row_data["TestCaseId"]).upper()
+            
 
             try:
                 if "CANCEL" in tc_id:
@@ -146,19 +146,19 @@ class ApprovalRateFixing(unittest.TestCase):
                 return ("Fail", msg)
 
             # ── Select Approval Ratefix No (Select2) ──
-            if row_data["PORefNo"]:
-                current_field = f"Approval Ratefix No ({row_data['PORefNo']})"
+            if row_data["ApprovalRatefixNo"]:
+                current_field = f"Approval Ratefix No ({row_data['ApprovalRatefixNo']})"
                 Function_Call.dropdown_select(
                     self,
                     '//select[@id="select_approval_ref_no"]/following-sibling::span',
-                    str(row_data["PORefNo"]),
+                    str(row_data["ApprovalRatefixNo"]),
                     '//span[@class="select2-search select2-search--dropdown"]/input'
                 )
                 sleep(2)
-                print(f"✅ Selected Approval Ratefix No: {row_data['PORefNo']}")
+                print(f"✅ Selected Approval Ratefix No: {row_data['ApprovalRatefixNo']}")
             else:
-                msg = "PORefNo is mandatory ⚠️"
-                self._take_screenshot(f"MissingField_PORefNo_TC{row_data['TestCaseId']}")
+                msg = "ApprovalRatefixNo is mandatory ⚠️"
+                self._take_screenshot(f"MissingField_ApprovalRatefixNo_TC{row_data['TestCaseId']}")
                 Function_Call.Remark(self, row_num, msg, sheet_name)
                 return ("Fail", msg)
 
@@ -281,9 +281,8 @@ class ApprovalRateFixing(unittest.TestCase):
     def test_list_verification(self, ratefix_id, row_data):
         driver = self.driver
         wait = self.wait
-        if "approval_rate_fixing" not in driver.current_url:
-             driver.get(BASE_URL + "index.php/admin_ret_purchase/rate_fixing/approval_rate_fixing")
-             sleep(2)
+        driver.get(BASE_URL + "index.php/admin_ret_purchase/rate_fixing/approval_rate_fixing")
+        sleep(2)
         
         try:
             # ── Apply Date Range: Today ──
@@ -313,7 +312,7 @@ class ApprovalRateFixing(unittest.TestCase):
                     EC.presence_of_element_located((By.XPATH, '//div[@id="payment_list_filter"]//input'))
                 )
                 search_input.clear()
-                search_input.send_keys(search_term)
+                search_input.send_keys(row_data["Karigar"])
                 sleep(2)
 
                 # Verify row appears
@@ -507,8 +506,15 @@ class ApprovalRateFixing(unittest.TestCase):
             sheet.cell(row=row_num, column=2, value=test_status).font = Font(bold=True, color=color)
             sheet.cell(row=row_num, column=3, value=actual_status).font = Font(bold=True, color=color)
             if captured_id:
-                # Column 14 is CapturedRateFixId
-                sheet.cell(row=row_num, column=14, value=str(captured_id))
+                existing_val = sheet.cell(row=row_num, column=14).value
+                col8_val = sheet.cell(row=row_num, column=8).value
+                try:
+                    existing_num = float(existing_val) if existing_val not in (None, "", "None") else 0.0
+                    col8_num = float(col8_val) if col8_val not in (None, "", "None") else 0.0
+                    total_val = existing_num + col8_num
+                except (ValueError, TypeError):
+                    total_val = str(captured_id)
+                sheet.cell(row=row_num, column=14, value=total_val)
             workbook.save(FILE_PATH)
             workbook.close()
         except:

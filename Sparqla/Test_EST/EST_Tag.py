@@ -93,43 +93,62 @@ class ESTIMATION_TAG(unittest.TestCase):
         web_row = 1
         for row_num in range(2, valid_rows + 1):
             current_id = sheet.cell(row=row_num, column=1).value  # Column 1 = Test Case Id
+            CustomerorderNo = sheet.cell(row=row_num, column=17).value
             if current_id == test_case_id:
-                # Lookup source data in Detail sheets
-                
-                prod = sheet.cell(row=row_num, column=6).value
-                des = sheet.cell(row=row_num, column=7).value
-                sub_des = sheet.cell(row=row_num, column=8).value
-                
-                src_sheet, src_row, source_data = ESTIMATION_TAG._find_tag_source(prod, des, sub_des)
-                
-                if not source_data:
-                    msg = f"⚠️ No matching data for {test_case_id} ({prod}/{des}) in Tag_Detail/Purchase_TagDetail"
-                    print(msg)
-                    ESTIMATION_TAG.update_excel_status(self, row_num, "Fail", msg, Sheet_name)
-                    continue
+                if not CustomerorderNo:
+                    # Lookup source data in Detail sheets                
+                    prod = sheet.cell(row=row_num, column=6).value
+                    des = sheet.cell(row=row_num, column=7).value
+                    sub_des = sheet.cell(row=row_num, column=8).value
+                    
+                    src_sheet, src_row, source_data = ESTIMATION_TAG._find_tag_source(prod, des, sub_des)
+                    
+                    if not source_data:
+                        msg = f"⚠️ No matching data for {test_case_id} ({prod}/{des}) in Tag_Detail/Purchase_TagDetail"
+                        print(msg)
+                        ESTIMATION_TAG.update_excel_status(self, row_num, "Fail", msg, Sheet_name)
+                        continue
 
-                # Add to tracking list for eventual status update
-                self.found_rows.append((src_sheet, src_row))
-                
-                # [NEW] Update Tag_EST sheet with found source data (Col 4 to 15)
-                
-                sheet.cell(row=row_num, column=4, value=source_data["Lot"])
-                sheet.cell(row=row_num, column=5, value=source_data["Tag No"])
-                sheet.cell(row=row_num, column=6, value=source_data["Product"])
-                sheet.cell(row=row_num, column=7, value=source_data["Design"])
-                sheet.cell(row=row_num, column=8, value=source_data["Sub Design"])
-                sheet.cell(row=row_num, column=9, value=source_data["Calc Type"])
-                sheet.cell(row=row_num, column=10, value=source_data["Pieces"])
-                sheet.cell(row=row_num, column=11, value=source_data["Gross Wgt"])
-                sheet.cell(row=row_num, column=12, value=source_data["Less Wgt"])
-                sheet.cell(row=row_num, column=13, value=source_data["Net Wgt"])
-                sheet.cell(row=row_num, column=14, value=source_data["Wast %"])
-                sheet.cell(row=row_num, column=15, value=source_data["Making Charge"])
-                sheet.cell(row=row_num, column=16, value=f"Fetched from {src_sheet} (Original Status: {source_data['Status']})")
-                workbook.save(FILE_PATH)
+                    # Add to tracking list for eventual status update
+                    self.found_rows.append((src_sheet, src_row))
+                    
+                    # [NEW] Update Tag_EST sheet with found source data (Col 4 to 15)
+                    
+                    sheet.cell(row=row_num, column=4, value=source_data["Lot"])
+                    sheet.cell(row=row_num, column=5, value=source_data["Tag No"])
+                    sheet.cell(row=row_num, column=6, value=source_data["Product"])
+                    sheet.cell(row=row_num, column=7, value=source_data["Design"])
+                    sheet.cell(row=row_num, column=8, value=source_data["Sub Design"])
+                    sheet.cell(row=row_num, column=9, value=source_data["Calc Type"])
+                    sheet.cell(row=row_num, column=10, value=source_data["Pieces"])
+                    sheet.cell(row=row_num, column=11, value=source_data["Gross Wgt"])
+                    sheet.cell(row=row_num, column=12, value=source_data["Less Wgt"])
+                    sheet.cell(row=row_num, column=13, value=source_data["Net Wgt"])
+                    sheet.cell(row=row_num, column=14, value=source_data["Wast %"])
+                    sheet.cell(row=row_num, column=15, value=source_data["Making Charge"])
+                    sheet.cell(row=row_num, column=16, value=f"Fetched from {src_sheet} (Original Status: {source_data['Status']})")
+                    workbook.save(FILE_PATH)
+                    # Use source data for the estimation
+                    row_data = source_data
+                else:
+                    # If CustomerorderNo is present, use data directly from the current sheet
+                    row_data = {
+                        "Tag No": sheet.cell(row=row_num, column=5).value,
+                        "Product": sheet.cell(row=row_num, column=6).value,
+                        "Design": sheet.cell(row=row_num, column=7).value,
+                        "Sub Design": sheet.cell(row=row_num, column=8).value,
+                        "Calc Type": sheet.cell(row=row_num, column=9).value,
+                        "Pieces": sheet.cell(row=row_num, column=10).value,
+                        "Gross Wgt": sheet.cell(row=row_num, column=11).value,
+                        "Less Wgt": sheet.cell(row=row_num, column=12).value,
+                        "Net Wgt": sheet.cell(row=row_num, column=13).value,
+                        "Wast %": sheet.cell(row=row_num, column=14).value,
+                        "Making Charge": sheet.cell(row=row_num, column=15).value,
+                        "CustomerorderNo": CustomerorderNo
+                    }
+                    src_sheet = Sheet_name
+                    src_row = row_num
 
-                # Use source data for the estimation
-                row_data = source_data
                 print(f"🧪 Processing row {row_num} using source from {src_sheet} row {src_row}")
                 print(Board_Rate)
                 
@@ -155,50 +174,55 @@ class ESTIMATION_TAG(unittest.TestCase):
         # For subsequent tags the panel is already open; clicking again would HIDE it.
         if row == 1:
             Function_Call.click(self,'//input[@id="select_tag_details"]')
-        if row_data["Tag No"]:
+        if row_data.get("Tag No"):
             # Use indexed XPath so each successive tag fills its own row's scan input
-            Function_Call.fill_input2(self,f'(//input[@id="est_tag_scan"])', row_data["Tag No"])
+            Function_Call.fill_input2(self,f'(//input[@id="est_tag_scan"])', row_data.get("Tag No"))
             Function_Call.click(self,f'(//button[@id="tag_search"])')
-        # Wait for table to load after tag scan
-        sleep(3)    
-        web_data = {}
-        try:
-            web_data["Tag_code"] = Function_Call.get_value(self, '//input[@name="est_tag[tag_name][]"]')           
-            web_data["Product"] = Function_Call.get_text(self, '//div[@class="prodct_name"]')
-            web_data["Design"] = Function_Call.get_text(self, '//div[@class="design_name"]')
-            web_data["SubDesign"] = Function_Call.get_text(self, '//div[@class="sub_design_name"]')
-            web_data["Pieces"] = Function_Call.get_value(self, '//input[@name="est_tag[piece][]"]')
-            web_data["Gross Wt"] = Function_Call.get_value(self, '//input[@name="est_tag[gwt][]"]')
-            web_data["Less Wt"] = Function_Call.get_value(self, '//input[@name="est_tag[lwt][]"]')
-            web_data["Net Wt"] = Function_Call.get_text(self, '//div[@class="nwt"]')
-            web_data["Wastage_per"] = Function_Call.get_value(self, '//input[@name="est_tag[wastage][]"]')
-            web_data["MC Value"] = Function_Call.get_value(self, '//input[@name="est_tag[mc][]"]')
-        except Exception as e:
-            print("⚠️ Error fetching web values:", e) 
-        print(web_data)
-        fields_to_check = {
-            "Tag No":"Tag_code",
-            "Product": "Product",
-            "Design": "Design",
-            "Sub Design": "SubDesign",
-            "Pieces": "Pieces",
-            "Gross Wgt": "Gross Wt",
-            "Less Wgt": "Less Wt",
-            "Net Wgt": "Net Wt",
-            "Wast %": "Wastage_per",
-            "Making Charge": "MC Value"
-        }
-        # Compare Excel vs Web
-        for excel_key, web_key in fields_to_check.items():
-            excel_value = str(row_data.get(excel_key, ""))
-            web_value = str(web_data.get(web_key, ""))
+            # Wait for table to load after tag scan
+            sleep(3)    
+            web_data = {}
+            try:
+                web_data["Tag_code"] = Function_Call.get_value(self, '//input[@name="est_tag[tag_name][]"]')           
+                web_data["Product"] = Function_Call.get_text(self, '//div[@class="prodct_name"]')
+                web_data["Design"] = Function_Call.get_text(self, '//div[@class="design_name"]')
+                web_data["SubDesign"] = Function_Call.get_text(self, '//div[@class="sub_design_name"]')
+                web_data["Pieces"] = Function_Call.get_value(self, '//input[@name="est_tag[piece][]"]')
+                web_data["Gross Wt"] = Function_Call.get_value(self, '//input[@name="est_tag[gwt][]"]')
+                web_data["Less Wt"] = Function_Call.get_value(self, '//input[@name="est_tag[lwt][]"]')
+                web_data["Net Wt"] = Function_Call.get_text(self, '//div[@class="nwt"]')
+                web_data["Wastage_per"] = Function_Call.get_value(self, '//input[@name="est_tag[wastage][]"]')
+                web_data["MC Value"] = Function_Call.get_value(self, '//input[@name="est_tag[mc][]"]')
+            except Exception as e:
+                print("⚠️ Error fetching web values:", e) 
+            print(web_data)
+            fields_to_check = {
+                "Tag No":"Tag_code",
+                "Product": "Product",
+                "Design": "Design",
+                "Sub Design": "SubDesign",
+                "Pieces": "Pieces",
+                "Gross Wgt": "Gross Wt",
+                "Less Wgt": "Less Wt",
+                "Net Wgt": "Net Wt",
+                "Wast %": "Wastage_per",
+                "Making Charge": "MC Value"
+            }
+            # Compare Excel vs Web
+            for excel_key, web_key in fields_to_check.items():
+                excel_value = str(row_data.get(excel_key, ""))
+                web_value = str(web_data.get(web_key, ""))
 
-            if excel_value != web_value:
-                msg=(f"❌ Mismatch in {excel_key}: Excel={excel_value} | Web={web_value}")
-                Function_Call.Remark(self,row_num, msg, Sheet_name)
-            else:
-                print(f"✅ {excel_key} matches: {excel_value}")
-        
+                if excel_value != web_value:
+                    msg=(f"❌ Mismatch in {excel_key}: Excel={excel_value} | Web={web_value}")
+                    Function_Call.Remark(self,row_num, msg, Sheet_name)
+                else:
+                    print(f"✅ {excel_key} matches: {excel_value}")
+        if row_data.get("CustomerorderNo"):
+            Function_Call.fill_input2(self,f'//input[@id="est_order"]', row_data.get("CustomerorderNo"))
+            Function_Call.click(self,f'//button[@id="order_search"]')
+            sleep(2)
+            Function_Call.click(self,'(//button[@class="btn btn-close btn-warning "])[6]')
+            
         # Fetch values with one-liners
         Gwt   = ESTIMATION_TAG.get_val(self, f'(//input[@name="est_tag[gwt][]"])[{row}]')
         Lwt   = ESTIMATION_TAG.get_val(self, f'(//input[@name="est_tag[lwt][]"])[{row}]')

@@ -443,13 +443,25 @@ class BranchTransfer(unittest.TestCase):
     def _flow_non_tagged(self, row_data):
         driver, wait = self.driver, self.wait
 
-        # NT Receipt (Select2) — if provided, load by receipt
+        # NT Receipt — numeric → Select2 dropdown; alphanumeric → Packet No text input
         if row_data.get("NT_Receipt"):
-            self.fc.dropdown_select2(
-                '//select[@id="nt_receipt"]/following-sibling::span',
-                str(row_data["NT_Receipt"]),
-                '//span[@class="select2-search select2-search--dropdown"]/input'
-            )
+            nt_val = str(row_data["NT_Receipt"]).strip()
+            if nt_val.isnumeric():
+                # Pure numeric: select from NT Receipt dropdown
+                self.fc.dropdown_select2(
+                    '//select[@id="nt_receipt"]/following-sibling::span',
+                    nt_val,
+                    '//span[@class="select2-search select2-search--dropdown"]/input'
+                )
+                print(f"✅ NT Receipt (numeric) selected: {nt_val}")
+            else:
+                # Alphanumeric packet code: type into Packet No text input
+                packet_input = self.wait.until(
+                    EC.element_to_be_clickable((By.ID, "nt_packet_code"))
+                )
+                packet_input.clear()
+                packet_input.send_keys(nt_val)
+                print(f"✅ Packet No (alphanumeric) entered: {nt_val}")
             sleep(1)
         else:
             # Product entry mode
